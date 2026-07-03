@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PlanRobin — Medicare Drug Cost Checker (Missouri beta)</title>
+  <meta name="description" content="Free, non-commercial Medicare Part D drug cost checker. Compare what your medications would cost across Missouri plans, straight from public CMS data." />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <div class="brand">🪶 PlanRobin</div>
+      <div class="beta">Missouri only · beta</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <h1>Medicare drug cost checker</h1>
+    <p class="lede">See what your prescriptions would cost across every Medicare drug plan in your
+      county — using public CMS data, with the math shown. No account, no sign-up.</p>
+
+    <!-- Step 1: county -->
+    <section class="card" id="step-county">
+      <h2><span class="step">1</span> Pick your county</h2>
+      <label class="field">
+        <span>Missouri county</span>
+        <select id="county" aria-label="County"><option value="">Loading…</option></select>
+      </label>
+    </section>
+
+    <!-- Step 2: drugs -->
+    <section class="card" id="step-drugs">
+      <h2><span class="step">2</span> Add your medications <span class="muted">(1–10)</span></h2>
+      <p class="muted small">Start typing a drug name — misspellings are fine. Pick the exact
+        strength and form. Brand and generic are shown separately; we never substitute silently.
+        <strong>Your medication list stays in your browser</strong> — only the drug codes are sent.</p>
+      <div class="field autocomplete">
+        <input type="text" id="drug-input" autocomplete="off" placeholder="e.g. duloxetine 30 mg…"
+               aria-label="Search for a medication" aria-expanded="false" aria-controls="suggestions" />
+        <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+      </div>
+      <ul id="drug-list" class="chips" aria-label="Your medications"></ul>
+    </section>
+
+    <div class="actions">
+      <button id="go" class="primary" disabled>See plan costs</button>
+      <span id="go-hint" class="muted small">Pick a county and at least one drug.</span>
+    </div>
+
+    <!-- Results -->
+    <section id="results" hidden aria-live="polite"></section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p id="provenance" class="provenance">Data: loading…</p>
+      <p class="disclaimer">
+        <strong>Educational tool, not advice or enrollment.</strong> PlanRobin is a free,
+        non-commercial resource. It shows cost estimates computed from public CMS files and does
+        not sell insurance, recommend a plan, or enroll you in coverage. Actual costs can differ
+        with your pharmacy, days-supply, deductible status, and coverage phase. Confirm any plan
+        on <a href="https://www.medicare.gov" rel="noopener" target="_blank">Medicare.gov</a>
+        or 1-800-MEDICARE before making decisions.
+      </p>
+    </div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

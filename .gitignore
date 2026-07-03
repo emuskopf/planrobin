@@ -10,6 +10,9 @@
 # Local embedded-Postgres data dir (regenerable via `npm run ingest`)
 .pglite/
 
+# Cloudflare Wrangler local state
+.wrangler/
+
 # Local editor/agent settings
 .claude/settings.local.json
 

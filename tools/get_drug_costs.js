@@ -88,16 +88,5 @@ async function getDrugCosts(rxcuis, planId, db) {
 }
 
 module.exports = { getDrugCosts };
-
-// CLI: node tools/get_drug_costs.js <planId> <rxcui> [rxcui...]
-if (require.main === module) {
-  (async () => {
-    const [planId, ...rxcuis] = process.argv.slice(2);
-    if (!planId || rxcuis.length === 0) { console.error('usage: node tools/get_drug_costs.js <planId> <rxcui> [rxcui...]'); process.exit(1); }
-    const { getDb } = require('../lib/db');
-    const db = await getDb();
-    const out = await getDrugCosts(rxcuis, planId, db);
-    console.log(JSON.stringify(out, null, 2));
-    await db.end();
-  })().catch((e) => { console.error('ERROR:', e.message); process.exit(1); });
-}
+// (Manual CLI removed so this stays Workers-bundle-safe — no node-only deps. Use the dev
+//  server or scripts/query.js for ad-hoc queries.)

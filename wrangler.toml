@@ -1,0 +1,11 @@
+# Cloudflare Pages configuration.
+# Static assets are served from /site; API routes come from /functions (auto-discovered).
+# nodejs_compat is required for the postgres.js driver used by the Pages Functions.
+name = "planrobin"
+pages_build_output_dir = "site"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# DATABASE_URL is NOT set here — add it as an encrypted Pages env var / secret in the
+# Cloudflare dashboard (or `wrangler pages secret put DATABASE_URL`). Point it at the
+# Supabase transaction pooler (port 6543). It never reaches the browser.

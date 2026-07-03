@@ -51,16 +51,4 @@ async function getPlansForCounty(countyKey, db) {
 }
 
 module.exports = { getPlansForCounty };
-
-// CLI: node tools/get_plans_for_county.js <ssa_code | county name>
-if (require.main === module) {
-  (async () => {
-    const key = process.argv.slice(2).join(' ');
-    if (!key) { console.error('usage: node tools/get_plans_for_county.js <ssa_code | county name>'); process.exit(1); }
-    const { getDb } = require('../lib/db');
-    const db = await getDb();
-    const out = await getPlansForCounty(key, db);
-    console.log(JSON.stringify(out, null, 2));
-    await db.end();
-  })().catch((e) => { console.error('ERROR:', e.message); process.exit(1); });
-}
+// (Manual CLI removed so this stays Workers-bundle-safe. Use scripts/query.js instead.)

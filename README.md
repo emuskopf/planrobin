@@ -233,3 +233,68 @@ id. Runs on every push via `.github/workflows/acceptance.yml`. Regenerate the fi
 3. Repo **variable** `PUF_URL` = the current quarter's outer-zip download URL (or pass
    `puf_url` when dispatching the workflow manually).
 4. The `ingest` workflow runs quarterly (1st of Jan/Apr/Jul/Oct, 09:00 UTC) and on demand.
+
+---
+
+# Phase 1 — The Drug Checker (first public artifact)
+
+A one-page drug cost checker for planrobin.com. **Zero LLM calls** — deterministic end to
+end: RxNorm autocomplete → typed tools → results table. Missouri-only beta.
+
+## Layout added
+```
+site/                   static frontend (Cloudflare Pages output dir)
+  index.html, styles.css, app.js
+functions/api/          Cloudflare Pages Functions (thin wrappers over the typed tools)
+  counties.js  meta.js  results.js  rxnorm/search.js
+lib/rxnorm.js           misspelling-tolerant RxNorm product search (no model)
+lib/api/handlers.js     deterministic handlers over get_plans_for_county + get_drug_costs
+lib/db_pg.js            postgres.js adapter (Workers/Node) — same query() API as lib/db.js
+lib/pages.js            Pages Function helpers (envDb, json)
+dev/server.js           local Node dev server (serves site + api, backed by PGlite)
+wrangler.toml           Pages config (output dir, nodejs_compat)
+scripts/query.js        ad-hoc CLI for the typed tools
+```
+
+## Architecture (no credentials in the browser)
+```
+browser (site/app.js)  ──►  /api/* Pages Functions  ──►  typed tools  ──►  Supabase
+                            └► /api/rxnorm/search  ──►  RxNorm REST (proxied + cached)
+```
+The browser talks only to our own `/api/*`. `DATABASE_URL` stays server-side (Pages env
+var). RxNorm is proxied through a Function so caching/rate-limits live in one place
+(`Cache-Control: max-age=86400`). **The medication list never leaves the browser except as
+RXCUIs** in the `/api/results` request.
+
+## Endpoints
+- `GET /api/counties` → Missouri counties for the dropdown.
+- `GET /api/meta` → data provenance from `ingest_runs` (quarter + load date), never hardcoded.
+- `GET /api/rxnorm/search?q=` → product candidates (rxcui, name, tty, brand/generic).
+  Misspellings like `duloxatine` resolve via RxNorm approximate-match — no model.
+- `POST /api/results` `{ county, rxcuis[] }` → every plan in the county with premium, type,
+  and per-drug tier + PA/ST/QL + copay/coinsurance. Sorted by estimated annual cost
+  (`12×premium + 12×30-day copays`, shown in plain sight). Drugs off-formulary render as
+  “Not covered by this plan’s formulary” and push the plan down — never omitted.
+
+## Run locally (no Cloudflare, no Supabase)
+```bash
+PGLITE_DIR=.pglite npm run ingest     # once, to populate the local DB (Phase 0b)
+npm run dev                           # http://localhost:8788  (serves site + api on PGlite)
+```
+
+## Deploy (Cloudflare Pages + Supabase)
+1. Connect the repo to Cloudflare Pages. Build output dir `site`; Functions auto-discovered
+   in `functions/`. `wrangler.toml` sets `nodejs_compat` (required by postgres.js).
+2. Add Pages env var **`DATABASE_URL`** = your Supabase **transaction pooler** URL (port
+   6543). It is read only in Functions and never shipped to the client.
+3. Point the domain at the Pages project. Test Functions locally with
+   `npx wrangler pages dev` (uses the real Functions against your `DATABASE_URL`).
+
+## Trust furniture (built in)
+- Every results view shows **“Data: CMS {quarter} … loaded {date}”**, rendered from
+  `ingest_runs` — verified live (`2026-Q1`, loaded July 2 2026).
+- Persistent plain-English disclaimer: education, not advice or enrollment.
+- The annual-cost **formula is shown on-screen** — no black-box scoring. Coinsurance drugs
+  can’t be dollar-totaled without a price, so they show as `%` and the estimate is flagged
+  incomplete (`$X+`) rather than silently under-counted.
+- Brand vs generic is an **explicit pick** from the suggestions, never a silent substitution.

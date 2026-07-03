@@ -17,10 +17,12 @@
     "fetch": "bash ingest/fetch.sh",
     "ingest": "node ingest/run.js",
     "make-fixtures": "bash tests/make_fixtures.sh",
+    "dev": "node dev/server.js",
     "test": "node tests/acceptance.test.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "postgres": "^3.4.9"
   }
 }
