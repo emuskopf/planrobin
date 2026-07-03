@@ -20,6 +20,33 @@
     <p class="lede">Medicare uses a lot of jargon. Here's what the terms in the drug checker mean.
       Short answers now; fuller articles are on the way.</p>
 
+    <section class="card" id="plan-types">
+      <h2>Plan types: MA-PD vs PDP</h2>
+      <ul>
+        <li id="ma-pd"><strong>MA-PD</strong> — a Medicare Advantage plan that includes drug
+          coverage. It's an all-in-one plan (medical + drugs) that replaces Original Medicare,
+          usually run by a private insurer.</li>
+        <li id="pdp"><strong>PDP</strong> — a stand-alone Prescription Drug Plan you add on top
+          of Original Medicare, just for drug coverage.</li>
+      </ul>
+      <p class="muted small">Full article coming soon.</p>
+    </section>
+
+    <section class="card" id="costs">
+      <h2>Premium, deductible, copay, coinsurance</h2>
+      <ul>
+        <li id="premium"><strong>Premium</strong> — the fixed monthly amount you pay to have the
+          plan, no matter how many drugs you take.</li>
+        <li id="deductible"><strong>Deductible</strong> — what you pay out of pocket for drugs
+          each year before the plan starts sharing the cost.</li>
+        <li id="copay"><strong>Copay</strong> — a fixed dollar amount per fill (for example, $10).</li>
+        <li id="coinsurance"><strong>Coinsurance</strong> — a percentage of the drug's price per
+          fill (for example, 25%) instead of a flat dollar amount. Because it depends on the
+          drug's price, the checker shows it as a % and can't total it into your annual estimate.</li>
+      </ul>
+      <p class="muted small">Full article coming soon.</p>
+    </section>
+
     <section class="card" id="coverage-phases">
       <h2>Coverage phases</h2>
       <p>Medicare Part D cost-sharing changes in <strong>phases</strong> as your drug spending
@@ -61,10 +88,12 @@
 
     <section class="card" id="tiers-flags">
       <h2>Tiers and the PA / ST / QL flags</h2>
-      <p>Plans sort drugs into <strong>tiers</strong> (lower tiers usually cost less). Some drugs
-        carry restrictions: <strong>PA</strong> = prior authorization (the plan must approve it
-        first), <strong>ST</strong> = step therapy (try a preferred drug first), <strong>QL</strong>
+      <p>Plans sort drugs into <strong id="tier">tiers</strong> (lower tiers usually cost less). Some drugs
+        carry restrictions: <strong id="prior-authorization">PA</strong> = prior authorization (the plan must approve it
+        first), <strong id="step-therapy">ST</strong> = step therapy (try a preferred drug first), <strong id="quantity-limit">QL</strong>
         = quantity limit (a cap on how much is covered per fill).</p>
+      <p>A plan's <strong id="formulary">formulary</strong> is its official list of covered drugs. If your drug isn't on
+        it, the checker says "Not covered by this plan's formulary" rather than hiding the plan.</p>
       <p class="muted small">Full article coming soon.</p>
     </section>
 

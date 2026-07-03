@@ -79,6 +79,18 @@ button.primary:disabled { background: #a9b6c8; cursor: not-allowed; }
 .notcovered { color: var(--bad); font-weight: 600; }
 details.phases { grid-column: 1 / -1; margin-top: 4px; }
 details.phases summary { cursor: pointer; color: var(--brand); font-size: .84rem; }
+/* term with a hover definition */
+.term { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; text-decoration-thickness: 1px; }
+.plan-sub .term { text-decoration-color: #b9c4d4; }
+
+/* "What do these terms mean?" key */
+.terms-key { margin: 0 0 16px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; box-shadow: var(--shadow); }
+.terms-key summary { cursor: pointer; font-weight: 600; color: var(--brand); }
+.key-h { margin: 10px 0 2px; font-size: .9rem; }
+.key-dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 2px 0 6px; font-size: .85rem; }
+.key-dl dt { font-weight: 600; }
+.key-dl dd { margin: 0; color: var(--ink-soft); }
+
 .phase-intro { margin: 8px 0 4px; color: var(--ink-soft); font-size: .86rem; max-width: 70ch; }
 .phase-legend { margin-top: 8px; font-size: .8rem; color: var(--ink-soft); }
 .phase-legend p { margin: 2px 0; }

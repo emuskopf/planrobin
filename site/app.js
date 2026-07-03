@@ -23,6 +23,20 @@ const TERMS = {
   'preferred-retail': 'Specific pharmacies the plan picks as lower-cost.',
   'preferred-mail': 'The plan’s mail-order pharmacy — often the cheapest, especially for 90-day fills.',
   'days-supply': 'How many days each fill covers. A 90-day fill is often cheaper per month.',
+  // Plan types
+  'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare.',
+  'pdp': 'A stand-alone Prescription Drug Plan you add on to Original Medicare.',
+  // Costs
+  'premium': 'The fixed monthly amount you pay to have the plan, no matter how many drugs you take.',
+  'deductible': 'What you pay out of pocket for drugs each year before the plan starts sharing the cost.',
+  'copay': 'A fixed dollar amount you pay per fill (for example, $10).',
+  'coinsurance': 'A percentage of the drug’s price you pay per fill (for example, 25%) instead of a flat dollar amount.',
+  // Drug-row terms
+  'tier': 'Plans sort covered drugs into tiers; lower tiers usually cost you less.',
+  'prior-authorization': 'PA — the plan must approve this drug before it’s covered.',
+  'step-therapy': 'ST — you may need to try a preferred or lower-cost drug first.',
+  'quantity-limit': 'QL — the plan caps how much of this drug is covered per fill or period.',
+  'formulary': 'The plan’s official list of covered drugs.',
 };
 // A "Learn more in the FAQ →" link (opens a new tab so the in-progress results aren’t lost).
 const faqLink = (slug, text = 'Learn more in the FAQ →') =>
@@ -161,9 +175,30 @@ function renderResults(data) {
     el('span', { className: 'muted small', textContent: data.meta && data.meta.quarter ? `Data: CMS ${data.meta.quarter}${d ? ', loaded ' + d.toLocaleDateString() : ''}` : '' }),
   ]));
   box.append(el('div', { className: 'formula', textContent: data.formula }));
+  box.append(renderKey());
 
   for (const p of data.plans) box.append(renderPlan(p));
 }
+
+// One-time "what do these terms mean?" key so the rows stay uncluttered. Sourced from the
+// central TERMS glossary; project rule: explain every Medicare term (see faq.html).
+function renderKey() {
+  const det = el('details', { className: 'terms-key' });
+  det.append(el('summary', { textContent: 'What do these terms mean?' }));
+  const group = (heading, items) => {
+    const dl = el('dl', { className: 'key-dl' });
+    for (const [label, slug] of items) { dl.append(el('dt', { textContent: label })); dl.append(el('dd', { textContent: TERMS[slug] })); }
+    det.append(el('h4', { className: 'key-h', textContent: heading }));
+    det.append(dl);
+  };
+  group('Plan types', [['MA-PD', 'ma-pd'], ['PDP', 'pdp']]);
+  group('Costs', [['Premium', 'premium'], ['Deductible', 'deductible'], ['Copay', 'copay'], ['Coinsurance', 'coinsurance']]);
+  group('On each drug', [['Tier', 'tier'], ['PA', 'prior-authorization'], ['ST', 'step-therapy'], ['QL', 'quantity-limit'], ['Formulary', 'formulary']]);
+  det.append(faqLink('tiers-flags', 'Full definitions in the FAQ →'));
+  return det;
+}
+
+const planTypeSlug = (label) => (label && label.startsWith('PDP')) ? 'pdp' : 'ma-pd';
 
 function renderPlan(p) {
   const annual = el('div', { className: 'annual' }, [
@@ -173,7 +208,13 @@ function renderPlan(p) {
   const head = el('div', { className: 'plan-head' }, [
     el('div', {}, [
       el('div', { className: 'plan-name', textContent: p.planName }),
-      el('div', { className: 'plan-sub', textContent: `${p.planType} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}` }),
+      el('div', { className: 'plan-sub' }, [
+        el('span', { className: 'term', title: TERMS[planTypeSlug(p.planType)], textContent: p.planType }),
+        document.createTextNode(' · '),
+        el('span', { className: 'term', title: TERMS.premium, textContent: `premium ${money(p.premium || 0)}/mo` }),
+        document.createTextNode(' · '),
+        el('span', { className: 'term', title: TERMS.deductible, textContent: `deductible ${money(p.deductible || 0)}` }),
+      ]),
     ]),
     annual,
   ]);
@@ -185,14 +226,15 @@ function renderPlan(p) {
 function renderDrugRow(rxcui, meta, res) {
   const name = el('span', { className: 'drug-name', textContent: meta.label });
   if (!res || !res.covered) {
-    return el('div', { className: 'drug-row' }, [name, el('span', { className: 'notcovered', textContent: 'Not covered by this plan’s formulary' })]);
+    return el('div', { className: 'drug-row' }, [name,
+      el('span', { className: 'notcovered term', title: TERMS.formulary, textContent: 'Not covered by this plan’s formulary' })]);
   }
   const flags = el('span', { className: 'flags' });
-  if (res.flags.priorAuth) flags.append(el('span', { className: 'flag', title: 'Prior authorization', textContent: 'PA' }));
-  if (res.flags.stepTherapy) flags.append(el('span', { className: 'flag', title: 'Step therapy', textContent: 'ST' }));
-  if (res.flags.quantityLimit) flags.append(el('span', { className: 'flag', title: `Quantity limit ${res.flags.qlAmount || ''}/${res.flags.qlDays || ''}d`, textContent: 'QL' }));
+  if (res.flags.priorAuth) flags.append(el('span', { className: 'flag', title: TERMS['prior-authorization'], textContent: 'PA' }));
+  if (res.flags.stepTherapy) flags.append(el('span', { className: 'flag', title: TERMS['step-therapy'], textContent: 'ST' }));
+  if (res.flags.quantityLimit) flags.append(el('span', { className: 'flag', title: `${TERMS['quantity-limit']} (limit ${res.flags.qlAmount || ''}/${res.flags.qlDays || ''} days)`, textContent: 'QL' }));
 
-  const left = el('div', {}, [name, el('span', { className: 'muted small', textContent: ` · Tier ${res.tier}` }), flags]);
+  const left = el('div', {}, [name, el('span', { className: 'muted small term', title: TERMS.tier, textContent: ` · Tier ${res.tier}` }), flags]);
   // Per-drug cost: per-fill headline + its annualized contribution (12 × 30-day copay).
   const right = el('div', { className: 'headline' });
   if (res.headline.kind === 'copay') {
