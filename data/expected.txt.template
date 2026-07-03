@@ -1,0 +1,12 @@
+# Copy this file to data/expected.txt — the ANSWER KEY.
+# What she ACTUALLY pays at the pharmacy per 30-day fill, from receipts or her
+# latest Explanation of Benefits (EOB). One per line:
+#   DRUG NAME => $X.XX
+# The drug name only needs to loosely match the name used in meds.txt.
+# Also note (in a comment) whether she had met her annual deductible at that fill,
+# and whether she used a preferred/mail pharmacy — both change the number.
+#
+# Examples:
+# lisinopril => $0.00
+# atorvastatin => $2.00
+# Eliquis => $47.00   # after deductible, standard retail

@@ -1,0 +1,19 @@
+{
+  "name": "planrobin-milestone0",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Milestone 0: validate the drug-tier lookup engine against one real Medicare plan using CMS PUF + RxNorm. Validation scripts only — no app.",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "01:plan": "node scripts/01_resolve_plan.js",
+    "02:rxcui": "node scripts/02_resolve_rxcui.js",
+    "03:join": "node scripts/03_join_formulary.js",
+    "04:price": "node scripts/04_price.js",
+    "05:validate": "node scripts/05_validate.js",
+    "all": "node scripts/01_resolve_plan.js && node scripts/02_resolve_rxcui.js && node scripts/03_join_formulary.js && node scripts/04_price.js && node scripts/05_validate.js"
+  },
+  "dependencies": {}
+}

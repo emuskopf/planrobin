@@ -1,0 +1,24 @@
+# Downloaded CMS data — large, reproducible from documented source URLs. Never commit.
+# Also excludes the real ground-truth inputs (plan.txt/meds.txt/expected.txt = PII).
+# Ignore the contents of data/ but NOT the dir itself, so the templates can be tracked.
+/data/*
+*.zip
+
+# ...but DO track the input templates so the expected format is documented in-repo.
+!data/*.template
+
+# Local editor/agent settings
+.claude/settings.local.json
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated pipeline outputs — reproducible by re-running the scripts, and they
+# contain her meds/plan (health PII). Keep the dir, ignore the contents.
+/out/*
+!out/.gitkeep

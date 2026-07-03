@@ -1,0 +1,10 @@
+# Copy this file to data/plan.txt and fill in the real plan.
+# Line 1: the CONTRACT-PLAN id exactly as on her member card or Medicare.gov.
+#   PDP (stand-alone drug plan) ids start with S, e.g.  S5678-042
+#   Medicare Advantage drug plans start with H (local) or R (regional), e.g. H1234-001
+#   Optionally add the 3-digit segment:  H1234-001-000
+# Line 2 (optional): her Missouri county, for a service-area sanity check.
+#
+# Example:
+# S5678-042
+# county: Cole

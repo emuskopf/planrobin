@@ -1,0 +1,13 @@
+# Copy this file to data/meds.txt and list her medications, one per line.
+# Format:   NAME | DOSE | brand|generic
+#   NAME  = drug name from the bottle label (brand OR generic name both work)
+#   DOSE  = strength, e.g. "10 mg", "20 mg", "5 mg", "12.5 mcg", "100 mg/ml"
+#   brand|generic = write "brand" if she gets the brand-name product, else "generic"
+# DOSE and brand|generic are optional but STRONGLY recommended — without a dose the
+# lookup returns every strength and cannot pin a tier.
+#
+# Examples:
+# lisinopril | 10 mg | generic
+# atorvastatin | 20 mg | generic
+# Eliquis | 5 mg | brand
+# metformin | 500 mg | generic
