@@ -13,7 +13,14 @@
     "03:join": "node scripts/03_join_formulary.js",
     "04:price": "node scripts/04_price.js",
     "05:validate": "node scripts/05_validate.js",
-    "all": "node scripts/01_resolve_plan.js && node scripts/02_resolve_rxcui.js && node scripts/03_join_formulary.js && node scripts/04_price.js && node scripts/05_validate.js"
+    "all": "node scripts/01_resolve_plan.js && node scripts/02_resolve_rxcui.js && node scripts/03_join_formulary.js && node scripts/04_price.js && node scripts/05_validate.js",
+    "fetch": "bash ingest/fetch.sh",
+    "ingest": "node ingest/run.js",
+    "make-fixtures": "bash tests/make_fixtures.sh",
+    "test": "node tests/acceptance.test.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "pg": "^8.22.0"
+  }
 }

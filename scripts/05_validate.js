@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { INPUT, OUTFILE } = require('./lib/config');
+const { renderTable } = require('../lib/validation_table');
 
 function loadExpected() {
   if (!fs.existsSync(INPUT.expected)) return null;
@@ -96,23 +97,15 @@ function main() {
     }
   }
 
-  // Render table.
-  const W = { drug: 26, rxcui: 22, tier: 5, flags: 10, comp: 20, exp: 14, match: 14 };
-  const header = pad('DRUG', W.drug) + pad('RXCUI', W.rxcui) + pad('TIER', W.tier) + pad('FLAGS', W.flags) + pad('COMPUTED', W.comp) + pad('EXPECTED', W.exp) + pad('MATCH?', W.match);
-  const sep = '-'.repeat(header.length);
-  const lines = [];
-  lines.push('='.repeat(header.length));
-  lines.push(`PlanRobin Milestone 0 — Validation Table`);
-  lines.push(`Plan: ${plan.target.raw}  ${plan.planName}  (formulary ${formulary.formularyId})`);
-  lines.push(`PUF: ${plan.pufQuarter}   Basis: standard retail, ${priced.daysLabel || '30-day'}, initial coverage`);
-  lines.push('='.repeat(header.length));
-  lines.push(header);
-  lines.push(sep);
-  for (const r of rows) {
-    lines.push(pad(r.label, W.drug) + pad(r.rxcui, W.rxcui) + pad(r.tier, W.tier) + pad(r.flags, W.flags) + pad(r.computedStr, W.comp) + pad(r.expectedStr, W.exp) + pad(r.match, W.match));
-  }
-  lines.push(sep);
-  const table = lines.join('\n');
+  // Render table via the single-source renderer shared with the DB acceptance test.
+  const meta = {
+    planId: plan.target.raw, planName: plan.planName, formularyId: formulary.formularyId,
+    pufQuarter: plan.pufQuarter, basis: `standard retail, ${priced.daysLabel || '30-day'}, initial coverage`,
+  };
+  const table = renderTable(meta, rows.map((r) => ({
+    drug: r.label, rxcui: r.rxcui, tier: r.tier, flags: r.flags,
+    computed: r.computedStr, expected: r.expectedStr, match: r.match,
+  })));
   console.log('\n' + table + '\n');
 
   console.log('SUMMARY');

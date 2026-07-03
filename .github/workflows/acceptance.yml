@@ -1,0 +1,22 @@
+name: acceptance
+
+# Hermetic regression: reproduces the Milestone 0 validation through the database and the
+# get_drug_costs tool, against a small real PUF fixture in embedded PGlite. No secrets,
+# no network. A failure here means the ingestion or tools drifted from the M0 answer.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Acceptance test (DB path must equal Milestone 0)
+        run: node tests/acceptance.test.js

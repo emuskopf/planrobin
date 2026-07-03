@@ -158,3 +158,78 @@ Price at the **claim grain and sum**; don't infer a clinical dose down into a si
 Milestone 0 goal met: computed cost matches actual pharmacy cost with a documented,
 understood basis. Per the roadmap, work stops here; next session turns these scripts into
 the scheduled ingestion pipeline + `get_drug_costs` / `get_plans_for_county` query tools.
+
+---
+
+# Phase 0b — Ingestion pipeline + first typed tools
+
+Turns the Milestone 0 scripts into a repeatable database pipeline and exposes the first two
+typed query tools. Still no app / UI. Scoped to **Missouri** plans.
+
+## Layout added
+```
+migrations/0001_init.sql   Supabase (Postgres) schema — run it yourself against Supabase
+lib/db.js                  one query() API over Supabase (pg) OR embedded PGlite (local/CI)
+lib/cost.js                CMS cost-code interpretation (copay/coinsurance) + plan-id parse
+lib/validation_table.js    single-source renderer shared by M0 script and the acceptance test
+ingest/fetch.sh            download + unnest the quarterly PUF zip -> the 4 needed .txt files
+ingest/parse.js            streaming MO-scope parser -> rows
+ingest/run.js              idempotent job: create run -> parse -> validation gate -> load
+tools/get_drug_costs.js    typed tool (pure SQL, structured return, ingest_run id on every #)
+tools/get_plans_for_county.js
+tests/acceptance.test.js   hermetic regression: DB path must equal Milestone 0, exactly
+tests/fixtures/            small REAL PUF subset for the acceptance test
+.github/workflows/         acceptance (every push) + ingest (quarterly cron + manual)
+```
+
+## Schema (7 tables, every row carries `ingest_run_id`)
+`ingest_runs` (audit: quarter, source file, download date, row counts, per-file sha256,
+validation-gate result), `counties`, `formularies`, `plans` (contract+plan+segment),
+`plan_counties` (service area), `drug_tiers` (formulary+rxcui+ndc → tier + PA/ST/QL),
+`tier_costs` (plan + coverage phase + tier + days-supply → copay/coinsurance by channel).
+
+## Run it
+```bash
+# Local / CI (no setup): embedded PGlite, in-memory.
+npm test                    # hermetic acceptance test (ingests fixture, asserts == M0)
+
+# Full Missouri ingest into a local PGlite dir, then query with the tools:
+PGLITE_DIR=.pglite npm run ingest
+PGLITE_DIR=.pglite node tools/get_drug_costs.js H4461-046 596934 596930
+PGLITE_DIR=.pglite node tools/get_plans_for_county.js 26950
+
+# Against Supabase: apply migrations/0001_init.sql yourself, then:
+DATABASE_URL='postgres://…' bash ingest/fetch.sh "<PUF_URL>" ./puf
+DATABASE_URL='postgres://…' SOURCE_DIR=./puf npm run ingest
+```
+
+## Design notes
+- **Idempotent:** each run replaces all data inside one transaction, tagged with the new
+  `ingest_run` id. Re-running the same quarter yields identical data — no duplicates.
+- **Validation gate:** before the (destructive) load, row counts + premium mean + tier-share
+  distribution are compared to the prior completed run. A shift beyond `GATE_MAX_DELTA`
+  (default 25%) **halts** the run (exit 3), loads nothing, and records the flags. `FORCE=1`
+  overrides after review. In CI a halt fails the job red.
+- **Tools are pure SQL, no LLM,** and return structured objects (not strings) with the
+  source `ingest_run_id` attached to every number. A drug not on formulary → `found:false`
+  (never dropped); an unknown plan/county → a `NOT FOUND` result.
+- **County identity:** CMS ships **SSA** state/county codes, not FIPS. We store the SSA code
+  as the key; `counties.fips_code` is nullable and stays NULL until an SSA→FIPS crosswalk is
+  loaded. `get_plans_for_county` therefore accepts an SSA code or county name (the nominal
+  `county_fips` parameter is generalized rather than faking a crosswalk).
+- **`star_rating` is a documented placeholder** (`null`) — star ratings are not in this PUF.
+
+## Acceptance / regression test
+`tests/acceptance.test.js` spins up in-memory PGlite, applies the migrations, ingests the
+real fixture in `tests/fixtures/`, calls `get_drug_costs`, and asserts the rendered table is
+**byte-for-byte identical** to the Milestone 0 result (duloxetine 60/30 mg, tier 2, 90-day
+standard retail $15 each, $30 regimen). It also asserts every number carries an ingest-run
+id. Runs on every push via `.github/workflows/acceptance.yml`. Regenerate the fixture with
+`npm run make-fixtures` (needs the full extracted PUF).
+
+## Supabase / CI setup (for the maintainer)
+1. Run `migrations/0001_init.sql` against your Supabase project.
+2. Repo **secret** `DATABASE_URL` = your Supabase Postgres connection string.
+3. Repo **variable** `PUF_URL` = the current quarter's outer-zip download URL (or pass
+   `puf_url` when dispatching the workflow manually).
+4. The `ingest` workflow runs quarterly (1st of Jan/Apr/Jul/Oct, 09:00 UTC) and on demand.

@@ -1,0 +1,62 @@
+name: ingest
+
+# Quarterly ingestion of the current CMS PUF into Supabase (Missouri scope).
+# Schedule: 09:00 UTC on the 1st of Jan/Apr/Jul/Oct. Also runnable on demand.
+# Failures and validation-gate halts fail the job RED (non-zero exit) — never silent.
+on:
+  schedule:
+    - cron: '0 9 1 1,4,7,10 *'
+  workflow_dispatch:
+    inputs:
+      puf_url:
+        description: 'HTTPS URL to the outer quarterly PUF zip (overrides repo var PUF_URL)'
+        required: false
+      quarter:
+        description: 'PUF quarter label, e.g. 2026-Q1'
+        required: false
+      source_file:
+        description: 'Inner source file name, e.g. SPUF_2026_20260408.zip (drives download date)'
+        required: false
+      force:
+        description: 'Set to 1 to bypass the validation gate'
+        required: false
+        default: '0'
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Preflight — required config present
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PUF_URL: ${{ github.event.inputs.puf_url || vars.PUF_URL }}
+        run: |
+          test -n "$DATABASE_URL" || { echo "::error::DATABASE_URL secret is not set"; exit 1; }
+          test -n "$PUF_URL"      || { echo "::error::PUF URL not provided (workflow input puf_url or repo var PUF_URL)"; exit 1; }
+
+      - name: Fetch + extract PUF
+        env:
+          PUF_URL: ${{ github.event.inputs.puf_url || vars.PUF_URL }}
+        run: bash ingest/fetch.sh "$PUF_URL" "$RUNNER_TEMP/puf"
+
+      - name: Ingest (Missouri scope, idempotent, gated)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SOURCE_DIR: ${{ runner.temp }}/puf
+          PUF_QUARTER: ${{ github.event.inputs.quarter }}
+          PUF_SOURCE_FILE: ${{ github.event.inputs.source_file }}
+          FORCE: ${{ github.event.inputs.force }}
+          GATE_MAX_DELTA: '0.25'
+        run: node ingest/run.js
+        # Exit 1 = failure, exit 3 = validation-gate halt. Either fails the job red.

@@ -1,0 +1,4 @@
+# Keep shell scripts LF so they run on Linux CI regardless of local core.autocrlf.
+*.sh text eol=lf
+# Normalize everything else to LF in the repo.
+* text=auto eol=lf

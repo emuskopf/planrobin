@@ -7,6 +7,9 @@
 # ...but DO track the input templates so the expected format is documented in-repo.
 !data/*.template
 
+# Local embedded-Postgres data dir (regenerable via `npm run ingest`)
+.pglite/
+
 # Local editor/agent settings
 .claude/settings.local.json
 
