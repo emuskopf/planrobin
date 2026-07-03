@@ -178,7 +178,15 @@ function renderDrugRow(rxcui, meta, res) {
   if (res.flags.quantityLimit) flags.append(el('span', { className: 'flag', title: `Quantity limit ${res.flags.qlAmount || ''}/${res.flags.qlDays || ''}d`, textContent: 'QL' }));
 
   const left = el('div', {}, [name, el('span', { className: 'muted small', textContent: ` · Tier ${res.tier}` }), flags]);
-  const right = el('span', { className: 'headline', textContent: res.headline.display });
+  // Per-drug cost: per-fill headline + its annualized contribution (12 × 30-day copay).
+  const right = el('div', { className: 'headline' });
+  if (res.headline.kind === 'copay') {
+    right.append(el('span', { textContent: `${money(res.headline.dollars)}/fill` }));
+    right.append(el('span', { className: 'muted small annual-drug', textContent: ` · ${money(res.headline.dollars * 12)}/yr` }));
+  } else {
+    right.append(el('span', { textContent: res.headline.display }));
+    right.append(el('span', { className: 'muted small annual-drug', textContent: ' · not annualized' }));
+  }
   const row = el('div', { className: 'drug-row' }, [left, right]);
   row.append(renderPhases(res.phases));
   return row;
