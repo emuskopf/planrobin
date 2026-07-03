@@ -13,6 +13,21 @@ const state = { county: '', drugs: new Map() /* rxcui -> {label, kind} */ };
 const PHASES = [['0', 'Pre-deductible'], ['1', 'Initial coverage'], ['3', 'Catastrophic']];
 const DAYS = [['1', '30-day'], ['2', '90-day']];
 
+// Plain-English glossary for Medicare jargon. Project rule: if it's jargon, explain it
+// in a sentence or two here, with a link to the fuller FAQ article (faq.html#slug).
+const TERMS = {
+  'pre-deductible': 'Early in the year, before you’ve met the plan’s deductible.',
+  'initial-coverage': 'Your regular cost after meeting the deductible. This is the headline number above.',
+  'catastrophic': 'After your yearly out-of-pocket spending reaches the cap ($2,000 in 2025), covered drugs are $0 for the rest of the year.',
+  'standard-retail': 'Any in-network pharmacy.',
+  'preferred-retail': 'Specific pharmacies the plan picks as lower-cost.',
+  'preferred-mail': 'The plan’s mail-order pharmacy — often the cheapest, especially for 90-day fills.',
+  'days-supply': 'How many days each fill covers. A 90-day fill is often cheaper per month.',
+};
+// A "Learn more in the FAQ →" link (opens a new tab so the in-progress results aren’t lost).
+const faqLink = (slug, text = 'Learn more in the FAQ →') =>
+  el('a', { href: 'faq.html#' + slug, target: '_blank', rel: 'noopener', className: 'faq-link', textContent: text });
+
 async function getJSON(url, opts) {
   const r = await fetch(url, opts);
   if (!r.ok) { let d = {}; try { d = await r.json(); } catch {} throw new Error(d.error || `HTTP ${r.status}`); }
@@ -195,25 +210,40 @@ function renderDrugRow(rxcui, meta, res) {
 function renderPhases(phases) {
   const det = el('details', { className: 'phases' });
   det.append(el('summary', { textContent: 'Other phases & pharmacy channels' }));
+
+  // Plain-English intro so the table isn't a wall of Medicare jargon.
+  det.append(el('p', { className: 'phase-intro', textContent:
+    'Your cost for this drug changes during the year and by where you fill it. The number above is the everyday case — a 30-day fill at a standard pharmacy during initial coverage. Here’s the rest.' }));
+
+  const th = (text, slug) => el('th', { textContent: text, title: TERMS[slug] || '' });
   const t = el('table', { className: 'detail' });
   t.append(el('thead', {}, el('tr', {}, [
-    el('th', { textContent: 'Phase' }), el('th', { textContent: 'Days' }),
-    el('th', { textContent: 'Std retail' }), el('th', { textContent: 'Pref retail' }),
-    el('th', { textContent: 'Pref mail' }),
+    el('th', { textContent: 'Phase' }), th('Days', 'days-supply'),
+    th('Std retail', 'standard-retail'), th('Pref retail', 'preferred-retail'), th('Pref mail', 'preferred-mail'),
   ])));
   const tb = el('tbody');
   for (const [lvl, plabel] of PHASES) {
     const ph = phases[lvl]; if (!ph) continue;
+    const slug = { '0': 'pre-deductible', '1': 'initial-coverage', '3': 'catastrophic' }[lvl];
     for (const [ds, dlabel] of DAYS) {
       const e = ph.byDaysSupply[ds]; if (!e) continue;
       tb.append(el('tr', {}, [
-        el('td', { textContent: plabel }), el('td', { textContent: dlabel }),
+        el('td', { textContent: plabel, title: TERMS[slug] || '' }), el('td', { textContent: dlabel }),
         el('td', { textContent: cell(e.standardRetail) }), el('td', { textContent: cell(e.preferredRetail) }),
         el('td', { textContent: cell(e.preferredMail) }),
       ]));
     }
   }
   t.append(tb); det.append(t);
+
+  // Short definitions + a link to the fuller FAQ article.
+  const legend = el('div', { className: 'phase-legend' });
+  legend.append(el('p', {}, [el('strong', { textContent: 'Phases: ' }), document.createTextNode(
+    `Pre-deductible = ${TERMS['pre-deductible']} Initial coverage = ${TERMS['initial-coverage']} Catastrophic = ${TERMS['catastrophic']}`)]));
+  legend.append(el('p', {}, [el('strong', { textContent: 'Pharmacy: ' }), document.createTextNode(
+    `Standard = ${TERMS['standard-retail']} Preferred = ${TERMS['preferred-retail']} Mail = ${TERMS['preferred-mail']}`)]));
+  legend.append(faqLink('coverage-phases'));
+  det.append(legend);
   return det;
 }
 

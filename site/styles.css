@@ -79,6 +79,11 @@ button.primary:disabled { background: #a9b6c8; cursor: not-allowed; }
 .notcovered { color: var(--bad); font-weight: 600; }
 details.phases { grid-column: 1 / -1; margin-top: 4px; }
 details.phases summary { cursor: pointer; color: var(--brand); font-size: .84rem; }
+.phase-intro { margin: 8px 0 4px; color: var(--ink-soft); font-size: .86rem; max-width: 70ch; }
+.phase-legend { margin-top: 8px; font-size: .8rem; color: var(--ink-soft); }
+.phase-legend p { margin: 2px 0; }
+.faq-link { display: inline-block; margin-top: 6px; color: var(--brand); font-size: .82rem; text-decoration: none; }
+.faq-link:hover { text-decoration: underline; }
 table.detail { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .84rem; }
 table.detail th, table.detail td { border: 1px solid var(--line); padding: 5px 8px; text-align: center; }
 table.detail th { background: #f2f5f9; }
