@@ -31,7 +31,8 @@ function serveStatic(req, res) {
   if (!file.startsWith(SITE) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return;
   }
-  res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+  // Dev only: never cache static assets, so edits show up on reload.
+  res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
   fs.createReadStream(file).pipe(res);
 }
 
@@ -45,7 +46,7 @@ async function main() {
       if (url.pathname === '/api/counties' && req.method === 'GET') return sendJson(res, await H.countiesHandler(db));
       if (url.pathname === '/api/meta' && req.method === 'GET') return sendJson(res, await H.metaHandler(db));
       if (url.pathname === '/api/rxnorm/search' && req.method === 'GET') {
-        return sendJson(res, await H.rxnormSearchHandler(url.searchParams.get('q'), { fetch, cache: rxCache }));
+        return sendJson(res, await H.rxnormSearchHandler(url.searchParams.get('q'), { fetch, cache: rxCache, db }));
       }
       if (url.pathname === '/api/results' && req.method === 'POST') {
         let raw = ''; for await (const c of req) raw += c;

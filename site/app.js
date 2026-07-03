@@ -103,10 +103,11 @@ function wireAutocomplete() {
     const list = data.results.filter((r) => !state.drugs.has(r.rxcui));
     if (list.length === 0) { box.append(el('li', { className: 'sugg-note', textContent: 'No matching products.' })); return; }
     for (const r of list) {
-      const li = el('li', { role: 'option' }, [
-        el('span', { className: 'nm', textContent: r.name }),
-        el('span', { className: 'badge ' + r.kind, textContent: r.kind }),
-      ]);
+      const kids = [el('span', { className: 'nm', textContent: r.name }), el('span', { className: 'badge ' + r.kind, textContent: r.kind })];
+      // Flag products no Missouri plan covers (e.g. specialized "Sprinkle" forms) — still
+      // selectable, just clearly marked so nobody picks one by mistake.
+      if (r.onFormulary === false) kids.push(el('span', { className: 'badge nocover', title: 'No Missouri plan lists this exact product', textContent: 'not on MO plans' }));
+      const li = el('li', { role: 'option', className: r.onFormulary === false ? 'sugg-nocover' : '' }, kids);
       li.addEventListener('click', () => { addDrug(r); input.value = ''; close(); });
       box.append(li);
     }
@@ -174,10 +175,31 @@ function renderResults(data) {
     el('span', { className: 'muted small', textContent: `${data.planCount} plans · sorted by estimated annual cost` }),
     el('span', { className: 'muted small', textContent: data.meta && data.meta.quarter ? `Data: CMS ${data.meta.quarter}${d ? ', loaded ' + d.toLocaleDateString() : ''}` : '' }),
   ]));
+  box.append(renderCoverageSummary(data));
   box.append(el('div', { className: 'formula', textContent: data.formula }));
   box.append(renderKey());
 
   for (const p of data.plans) box.append(renderPlan(p));
+}
+
+// Coverage at a glance: how many plans cover ALL your drugs, and per drug how many cover it.
+// A drug covered by 0 plans is called out loudly (usually a wrong product/form was picked).
+function renderCoverageSummary(data) {
+  const total = data.plans.length;
+  const coversAll = data.plans.filter((p) => p.notCovered === 0).length;
+  const wrap = el('div', { className: 'coverage-summary' });
+  wrap.append(el('div', { className: 'cov-headline', textContent: `${coversAll} of ${total} plans cover all your drugs` }));
+  for (const [rxcui, meta] of state.drugs) {
+    const cov = data.plans.filter((p) => p.drugs[rxcui] && p.drugs[rxcui].covered).length;
+    const zero = cov === 0;
+    const line = el('div', { className: 'cov-line' + (zero ? ' cov-zero' : '') }, [
+      el('span', { className: 'cov-name', textContent: meta.label }),
+      el('span', { className: 'cov-count', textContent: `covered by ${cov} of ${total} plans` }),
+    ]);
+    if (zero) line.append(el('span', { className: 'cov-hint', textContent: 'Not on any plan here — double-check you picked the right product or form.' }));
+    wrap.append(line);
+  }
+  return wrap;
 }
 
 // One-time "what do these terms mean?" key so the rows stay uncluttered. Sourced from the
