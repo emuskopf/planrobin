@@ -33,7 +33,7 @@ async function init() {
     for (const c of counties) sel.append(el('option', { value: c.code, textContent: c.name }));
   } catch { $('#county').innerHTML = '<option>Could not load counties</option>'; }
 
-  $('#county').addEventListener('change', (e) => { state.county = e.target.value; refreshGo(); });
+  $('#county').addEventListener('change', (e) => { state.county = e.target.value; refreshGo(); syncResults(); });
   wireAutocomplete();
   $('#go').addEventListener('click', runResults);
 }
@@ -87,9 +87,9 @@ function wireAutocomplete() {
 function addDrug(r) {
   if (state.drugs.size >= 10 || state.drugs.has(r.rxcui)) return;
   state.drugs.set(r.rxcui, { label: r.name, kind: r.kind });
-  renderChips(); refreshGo();
+  renderChips(); refreshGo(); syncResults();
 }
-function removeDrug(rxcui) { state.drugs.delete(rxcui); renderChips(); refreshGo(); }
+function removeDrug(rxcui) { state.drugs.delete(rxcui); renderChips(); refreshGo(); syncResults(); }
 
 function renderChips() {
   const ul = $('#drug-list'); ul.innerHTML = '';
@@ -106,8 +106,20 @@ function refreshGo() {
   $('#go-hint').textContent = ok ? `${state.drugs.size} drug(s) · ready` : 'Pick a county and at least one drug.';
 }
 
+// Keep the results in sync with the current list. If results are already showing and the
+// county/drug list changes, re-run (costs + sort depend on the exact set); if the list is
+// no longer valid, clear them so nothing stale lingers.
+function syncResults() {
+  if ($('#results').hidden) return;
+  if (state.county && state.drugs.size >= 1) runResults();
+  else clearResults();
+}
+function clearResults() { const b = $('#results'); b.hidden = true; b.innerHTML = ''; }
+
 // ---------- results ----------
+let runSeq = 0;
 async function runResults() {
+  const mine = ++runSeq; // guard against out-of-order responses when the list changes fast
   const box = $('#results'); box.hidden = false; box.innerHTML = '';
   box.append(el('p', { className: 'spinner', textContent: 'Checking every plan in your county…' }));
   try {
@@ -115,8 +127,10 @@ async function runResults() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ county: state.county, rxcuis: [...state.drugs.keys()] }),
     });
+    if (mine !== runSeq) return; // a newer run superseded this one
     renderResults(data);
   } catch (e) {
+    if (mine !== runSeq) return;
     box.innerHTML = ''; box.append(el('p', { className: 'error', textContent: 'Could not load results: ' + e.message }));
   }
 }
