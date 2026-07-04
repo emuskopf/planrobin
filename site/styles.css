@@ -77,8 +77,9 @@ a:focus-visible { outline-offset: 3px; }
 
 /* ---------- hero ---------- */
 .hero { padding: var(--sp-7) 0 var(--sp-5); }
-.hero h1 { max-width: 20ch; }
-.hero .sub { font-size: var(--fs-md); color: var(--ink-2); max-width: 44ch; margin: 0 0 var(--sp-4); }
+.hero h1 { max-width: 24ch; }
+.hero .sub { font-size: var(--fs-md); color: var(--ink-2); max-width: 46ch; margin: 0 0 var(--sp-2); }
+.hero-aside { font-size: var(--fs-sm); color: var(--ink-3); max-width: 46ch; margin: 0 0 var(--sp-4); }
 .hero .story-link { font-size: var(--fs-sm); font-weight: 600; }
 .lede { font-size: var(--fs-md); color: var(--ink-2); max-width: 62ch; margin: 0 0 var(--sp-5); }
 
