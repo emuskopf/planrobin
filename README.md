@@ -14,7 +14,8 @@ ingestion pipeline next session.
 
 | What | Source | Downloaded |
 |---|---|---|
-| Quarterly Prescription Drug Plan Formulary, Pharmacy Network, and Pricing Information (PUF) | CMS: <https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/quarterly-prescription-drug-plan-formulary-pharmacy-network-and-pricing-information> | 2026-07-01 (by user) |
+| Quarterly Prescription Drug Plan Formulary, Pharmacy Network, and Pricing Information (PUF) — dataset page | CMS: <https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/quarterly-prescription-drug-plan-formulary-pharmacy-network-and-pricing-information> | 2026-07-01 (by user) |
+| 2026-Q1 direct download (the `SPUF_2026_20260408.zip` used by ingest — set as the `PUF_URL` for the ingest job) | CMS: <https://data.cms.gov/sites/default/files/2026-04/65e8dafd-c42b-4c2a-93c2-551bbc80bef9/SPUF_2026_20260408.zip> | 2026-04-08 (published) |
 | RxNorm REST API (drug name/dose → RXCUI) | NLM: <https://rxnav.nlm.nih.gov/REST/> | live calls |
 
 **PUF set used:** plan year **2026, Q1 refresh**, inner file `SPUF_2026_20260408.zip`
@@ -230,8 +231,10 @@ id. Runs on every push via `.github/workflows/acceptance.yml`. Regenerate the fi
 ## Supabase / CI setup (for the maintainer)
 1. Run `migrations/0001_init.sql` against your Supabase project.
 2. Repo **secret** `DATABASE_URL` = your Supabase Postgres connection string.
-3. Repo **variable** `PUF_URL` = the current quarter's outer-zip download URL (or pass
-   `puf_url` when dispatching the workflow manually).
+3. Repo **variable** `PUF_URL` = the current quarter's zip download URL. `fetch.sh` accepts
+   either the outer "Quarterly…" wrapper or the direct `SPUF_*.zip`. For 2026-Q1 that is
+   `https://data.cms.gov/sites/default/files/2026-04/65e8dafd-c42b-4c2a-93c2-551bbc80bef9/SPUF_2026_20260408.zip`
+   (or pass `puf_url` when dispatching the workflow manually).
 4. The `ingest` workflow runs quarterly (1st of Jan/Apr/Jul/Oct, 09:00 UTC) and on demand.
 
 ---

@@ -26,15 +26,20 @@ case "$SOURCE" in
   *) echo "Using local $SOURCE"; cp "$SOURCE" "$OUTER" ;;
 esac
 
-# 2) Outer -> inner SPUF_YYYY.zip (+ docs).
+# 2) Unzip the download. It may be either:
+#      (a) the outer "Quarterly …" wrapper, which contains an inner SPUF_*.zip (+ PDFs), or
+#      (b) the SPUF_*.zip itself, which contains the component zips directly.
+#    CMS's direct file URL points at (b); the browser download is (a). Handle both.
 unzip -o -j "$OUTER" -d "$TMP/l1" >/dev/null
 INNER="$(find "$TMP/l1" -iname 'SPUF_*.zip' | head -1)"
-[ -n "$INNER" ] || { echo "ERROR: no SPUF_*.zip inside outer zip"; exit 1; }
+if [ -n "$INNER" ]; then
+  COMP="$TMP/l2"
+  unzip -o -j "$INNER" -d "$COMP" >/dev/null   # (a) inner SPUF -> component zips
+else
+  COMP="$TMP/l1"                                # (b) download was already the SPUF zip
+fi
 
-# 3) Inner -> component zips.
-unzip -o -j "$INNER" -d "$TMP/l2" >/dev/null
-
-# 4) Only the component zips we need -> their .txt into DEST (skip 'sample' and 'insulin').
+# 3) Only the component zips we need -> their .txt into DEST (skip 'sample' and 'insulin').
 found=0
 while IFS= read -r z; do
   base="$(basename "$z")"
@@ -43,7 +48,7 @@ while IFS= read -r z; do
   echo "$low" | grep -Eq 'sample|insulin' && continue
   unzip -o -j "$z" -d "$DEST" >/dev/null
   found=$((found+1))
-done < <(find "$TMP/l2" -iname '*.zip')
+done < <(find "$COMP" -iname '*.zip')
 
 echo "Extracted component files: $found"
 ls -1 "$DEST"/*.txt

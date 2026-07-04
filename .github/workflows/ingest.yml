@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       puf_url:
-        description: 'HTTPS URL to the outer quarterly PUF zip (overrides repo var PUF_URL)'
+        description: 'HTTPS URL to the quarterly PUF zip — the outer "Quarterly…" wrapper OR the direct SPUF_*.zip (overrides repo var PUF_URL)'
         required: false
       quarter:
         description: 'PUF quarter label, e.g. 2026-Q1'
