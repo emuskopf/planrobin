@@ -9,6 +9,16 @@ const el = (tag, props = {}, kids = []) => {
   return n;
 };
 
+// Small inline icons so semantic states never rely on color alone (icon + word + color).
+const ICON = {
+  check: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l3.5 3.5L16 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  cross: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round"/></svg>',
+  law: '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3v13M4 16h12M6.5 7h7M6.5 7L4.5 11.5a2 2 0 004 0L6.5 7zm7 0l-2 4.5a2 2 0 004 0L13.5 7z" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+const ic = (name) => { const s = el('span', { className: 'ic' }); s.innerHTML = ICON[name]; return s; };
+// Which applied override → a plain-English "by federal law" badge (the trust feature).
+const LAW_BADGE = { insulin_cap_35: 'capped by federal law', acip_vaccine_free: 'free by federal law' };
+
 const state = { county: '', drugs: new Map() /* rxcui -> {label, kind} */ };
 const PHASES = [['0', 'Pre-deductible'], ['1', 'Initial coverage'], ['3', 'Catastrophic']];
 const DAYS = [['1', '30-day'], ['2', '90-day']];
@@ -74,11 +84,25 @@ function renderProvenance(meta) {
   $('#provenance').textContent = `Data: CMS ${meta.quarter} Prescription Drug Plan files, loaded ${upd} (scope: ${meta.scope || 'MO'}).`;
 }
 
-// ---------- autocomplete ----------
+// ---------- autocomplete (fully keyboard-navigable) ----------
 function wireAutocomplete() {
   const input = $('#drug-input'), box = $('#suggestions');
-  let timer = null, seq = 0;
-  const close = () => { box.hidden = true; box.innerHTML = ''; input.setAttribute('aria-expanded', 'false'); };
+  let timer = null, seq = 0, options = [], active = -1;
+
+  const close = () => {
+    box.hidden = true; box.innerHTML = ''; options = []; active = -1;
+    input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant');
+  };
+  const setActive = (i) => {
+    if (!options.length) return;
+    if (active >= 0) options[active].classList.remove('active');
+    active = (i + options.length) % options.length;
+    const li = options[active];
+    li.classList.add('active'); li.setAttribute('aria-selected', 'true');
+    input.setAttribute('aria-activedescendant', li.id);
+    li.scrollIntoView({ block: 'nearest' });
+  };
+  const choose = (li) => { const r = li._data; addDrug(r); input.value = ''; input.focus(); close(); };
 
   input.addEventListener('input', () => {
     const q = input.value.trim();
@@ -86,31 +110,40 @@ function wireAutocomplete() {
     if (q.length < 2) return close();
     timer = setTimeout(async () => {
       const mine = ++seq;
-      box.hidden = false; box.innerHTML = ''; box.append(el('li', { className: 'sugg-note', textContent: 'Searching…' }));
+      box.hidden = false; box.innerHTML = ''; options = []; active = -1;
+      box.append(el('li', { className: 'sugg-note', textContent: 'Searching…' }));
       input.setAttribute('aria-expanded', 'true');
       try {
         const data = await getJSON('/api/rxnorm/search?q=' + encodeURIComponent(q));
         if (mine !== seq) return; // stale
         renderSuggestions(data);
-      } catch { if (mine === seq) { box.innerHTML = ''; box.append(el('li', { className: 'sugg-note error', textContent: 'Search failed — try again.' })); } }
+      } catch { if (mine === seq) { box.innerHTML = ''; box.append(el('li', { className: 'sugg-note error', textContent: 'Search couldn’t reach the drug database — please try again.' })); } }
     }, 220);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (box.hidden || !options.length) { if (e.key === 'Escape') input.value = ''; return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Enter') { if (active >= 0) { e.preventDefault(); choose(options[active]); } }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
   });
   document.addEventListener('click', (e) => { if (!e.target.closest('.autocomplete')) close(); });
 
   function renderSuggestions(data) {
-    box.innerHTML = '';
+    box.innerHTML = ''; options = []; active = -1;
     if (data.approximatedFrom) box.append(el('li', { className: 'sugg-note', textContent: `Showing results for “${data.approximatedFrom}”` }));
     const list = data.results.filter((r) => !state.drugs.has(r.rxcui));
     if (list.length === 0) { box.append(el('li', { className: 'sugg-note', textContent: 'No matching products.' })); return; }
-    for (const r of list) {
+    list.forEach((r, i) => {
       const kids = [el('span', { className: 'nm', textContent: r.name }), el('span', { className: 'badge ' + r.kind, textContent: r.kind })];
-      // Flag products no Missouri plan covers (e.g. specialized "Sprinkle" forms) — still
-      // selectable, just clearly marked so nobody picks one by mistake.
       if (r.onFormulary === false) kids.push(el('span', { className: 'badge nocover', title: 'No Missouri plan lists this exact product', textContent: 'not on MO plans' }));
-      const li = el('li', { role: 'option', className: r.onFormulary === false ? 'sugg-nocover' : '' }, kids);
-      li.addEventListener('click', () => { addDrug(r); input.value = ''; close(); });
-      box.append(li);
-    }
+      const li = el('li', { id: 'sugg-' + i, role: 'option', className: r.onFormulary === false ? 'sugg-nocover' : '' }, kids);
+      li._data = r;
+      li.addEventListener('click', () => choose(li));
+      li.addEventListener('mousemove', () => { if (active >= 0) options[active].classList.remove('active'); active = options.indexOf(li); li.classList.add('active'); });
+      box.append(li); options.push(li);
+    });
   }
 }
 
@@ -151,7 +184,7 @@ let runSeq = 0;
 async function runResults() {
   const mine = ++runSeq; // guard against out-of-order responses when the list changes fast
   const box = $('#results'); box.hidden = false; box.innerHTML = '';
-  box.append(el('p', { className: 'spinner', textContent: 'Checking every plan in your county…' }));
+  renderSkeleton(box);
   try {
     const data = await getJSON('/api/results', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -161,7 +194,24 @@ async function runResults() {
     renderResults(data);
   } catch (e) {
     if (mine !== runSeq) return;
-    box.innerHTML = ''; box.append(el('p', { className: 'error', textContent: 'Could not load results: ' + e.message }));
+    box.innerHTML = '';
+    const wrap = el('div', { className: 'state error' }, [
+      el('p', { textContent: 'We couldn’t load the plan comparison just now.' }),
+      el('p', { className: 'muted small', textContent: 'This is usually a brief connection hiccup — nothing is wrong with your list.' }),
+    ]);
+    const retry = el('button', { className: 'retry', type: 'button', textContent: 'Try again' });
+    retry.addEventListener('click', runResults);
+    wrap.append(retry);
+    box.append(wrap);
+  }
+}
+
+// Calm skeleton — the page settles in, nothing spins forever.
+function renderSkeleton(box) {
+  const line = (w) => el('div', { className: 'sk-line', style: `width:${w}` });
+  box.append(el('p', { className: 'muted small', textContent: 'Checking every plan in your county…' }));
+  for (let i = 0; i < 3; i++) {
+    box.append(el('div', { className: 'sk-card' }, [line('55%'), line('85%'), line('40%')]));
   }
 }
 
@@ -193,6 +243,7 @@ function renderCoverageSummary(data) {
     const cov = data.plans.filter((p) => p.drugs[rxcui] && p.drugs[rxcui].covered).length;
     const zero = cov === 0;
     const line = el('div', { className: 'cov-line' + (zero ? ' cov-zero' : '') }, [
+      ic(zero ? 'cross' : 'check'),
       el('span', { className: 'cov-name', textContent: meta.label }),
       el('span', { className: 'cov-count', textContent: `covered by ${cov} of ${total} plans` }),
     ]);
@@ -246,26 +297,41 @@ function renderPlan(p) {
 }
 
 function renderDrugRow(rxcui, meta, res) {
-  const name = el('span', { className: 'drug-name', textContent: meta.label });
   if (!res || !res.covered) {
-    return el('div', { className: 'drug-row' }, [name,
-      el('span', { className: 'notcovered term', title: TERMS.formulary, textContent: 'Not covered by this plan’s formulary' })]);
+    const status = el('span', { className: 'status notcov', title: TERMS.formulary });
+    status.append(ic('cross'), document.createTextNode(' Not covered'));
+    return el('div', { className: 'drug-row' }, [
+      el('div', { className: 'dr-left' }, [el('span', { className: 'drug-name', textContent: meta.label })]),
+      status,
+    ]);
   }
   const flags = el('span', { className: 'flags' });
   if (res.flags.priorAuth) flags.append(el('span', { className: 'flag', title: TERMS['prior-authorization'], textContent: 'PA' }));
   if (res.flags.stepTherapy) flags.append(el('span', { className: 'flag', title: TERMS['step-therapy'], textContent: 'ST' }));
   if (res.flags.quantityLimit) flags.append(el('span', { className: 'flag', title: `${TERMS['quantity-limit']} (limit ${res.flags.qlAmount || ''}/${res.flags.qlDays || ''} days)`, textContent: 'QL' }));
 
-  const left = el('div', {}, [name, el('span', { className: 'muted small term', title: TERMS.tier, textContent: ` · Tier ${res.tier}` }), flags]);
-  // Per-drug cost: per-fill headline + its annualized contribution (12 × 30-day copay).
+  const nameLine = el('div', {}, [
+    el('span', { className: 'drug-name', textContent: meta.label }),
+    el('span', { className: 'muted small term', title: TERMS.tier, textContent: ` · Tier ${res.tier}` }), flags,
+  ]);
+  const left = el('div', { className: 'dr-left' }, [ic('check'), nameLine]);
+
   const right = el('div', { className: 'headline' });
   if (res.headline.kind === 'copay') {
-    right.append(el('span', { textContent: `${money(res.headline.dollars)}/fill` }));
-    right.append(el('span', { className: 'muted small annual-drug', textContent: ` · ${money(res.headline.dollars * 12)}/yr` }));
+    right.append(el('span', { className: 'amt', textContent: `${money(res.headline.dollars)}/fill` }));
+    right.append(el('span', { className: 'annual-drug', textContent: ` · ${money(res.headline.dollars * 12)}/yr` }));
   } else {
-    right.append(el('span', { textContent: res.headline.display }));
-    right.append(el('span', { className: 'muted small annual-drug', textContent: ' · not annualized' }));
+    right.append(el('span', { className: 'amt', textContent: res.headline.display }));
+    right.append(el('span', { className: 'annual-drug', textContent: ' · not annualized' }));
   }
+  // Trust feature: when federal law sets the price, say so plainly ("capped by federal law").
+  const rule = (res.appliedOverrides || [])[0];
+  if (rule && LAW_BADGE[rule.rule]) {
+    const badge = el('span', { className: 'badge-law', title: rule.note || '' });
+    badge.append(ic('law'), document.createTextNode(' ' + LAW_BADGE[rule.rule]));
+    right.append(el('div', {}, [badge]));
+  }
+
   const row = el('div', { className: 'drug-row' }, [left, right]);
   row.append(renderPhases(res.phases));
   return row;

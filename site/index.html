@@ -3,70 +3,99 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PlanRobin — Medicare Drug Cost Checker (Missouri beta)</title>
-  <meta name="description" content="Free, non-commercial Medicare Part D drug cost checker. Compare what your medications would cost across Missouri plans, straight from public CMS data." />
-  <link rel="stylesheet" href="/styles.css?v=2" />
+  <title>PlanRobin — check your Medicare drug plan, anonymously</title>
+  <meta name="description" content="Audit a Medicare Part D drug plan in a few minutes. Free, anonymous, no accounts, no spam calls. Cost estimates straight from public CMS data — a private site, not affiliated with Medicare." />
+  <meta name="theme-color" content="#f5f3ee" />
+  <link rel="stylesheet" href="/styles.css?v=3" />
 </head>
 <body>
   <header class="site-header">
     <div class="wrap">
-      <div class="brand">🪶 PlanRobin</div>
-      <div class="beta">Missouri only · beta</div>
+      <a class="brand" href="/">🪶 PlanRobin</a>
+      <span class="beta">Missouri · beta</span>
     </div>
   </header>
 
   <main class="wrap">
-    <h1>Medicare drug cost checker</h1>
-    <p class="lede">See what your prescriptions would cost across every Medicare drug plan in your
-      county — using public CMS data, with the math shown. No account, no sign-up.</p>
+    <section class="hero">
+      <h1>Audit your parent's Medicare drug plan in 3 minutes.</h1>
+      <p class="sub">100% anonymous. No spam calls. No accounts, ever.</p>
+      <a class="story-link" href="/story.html">Why we built this &rarr;</a>
+
+      <div class="trust-strip" role="note">
+        <span class="ts"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5l3.5 3.5L16 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Free — always</span>
+        <span class="ts"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5l3.5 3.5L16 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg> No accounts, no logins</span>
+        <span class="ts"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5l3.5 3.5L16 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg> We don't sell anything — or anyone</span>
+      </div>
+      <p class="non-affil">PlanRobin is a private website — <strong>not affiliated with the federal Medicare program</strong> or any insurance company.</p>
+    </section>
 
     <!-- Step 1: county -->
     <section class="card" id="step-county">
-      <h2><span class="step">1</span> Pick your county</h2>
+      <h2><span class="step" aria-hidden="true">1</span> Pick your county</h2>
       <label class="field">
-        <span>Missouri county</span>
-        <select id="county" aria-label="County"><option value="">Loading…</option></select>
+        <span class="label">Missouri county</span>
+        <select id="county" aria-label="Your Missouri county"><option value="">Loading counties…</option></select>
       </label>
     </section>
 
     <!-- Step 2: drugs -->
     <section class="card" id="step-drugs">
-      <h2><span class="step">2</span> Add your medications <span class="muted">(1–10)</span></h2>
-      <p class="muted small">Start typing a drug name — misspellings are fine. Pick the exact
-        strength and form. Brand and generic are shown separately; we never substitute silently.
-        <strong>Your medication list stays in your browser</strong> — only the drug codes are sent.</p>
+      <h2><span class="step" aria-hidden="true">2</span> Add the medications</h2>
+
+      <div class="privacy-note">
+        <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M6.5 9V6.5a3.5 3.5 0 017 0V9"/></svg>
+        <span><strong>Your medication list never leaves this device.</strong> We only send anonymous drug codes to look up prices — never a name, and nothing is saved.</span>
+      </div>
+
+      <p class="help-text">Start typing a drug name — misspellings are fine. Pick the exact strength and form.
+        Brand and generic are shown separately; we never substitute one for the other silently. Add 1–10 medications.</p>
+
       <div class="field autocomplete">
         <input type="text" id="drug-input" autocomplete="off" placeholder="e.g. duloxetine 30 mg…"
-               aria-label="Search for a medication" aria-expanded="false" aria-controls="suggestions" />
-        <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+               role="combobox" aria-expanded="false" aria-controls="suggestions" aria-autocomplete="list"
+               aria-label="Search for a medication" />
+        <ul id="suggestions" class="suggestions" role="listbox" aria-label="Matching medications" hidden></ul>
       </div>
-      <ul id="drug-list" class="chips" aria-label="Your medications"></ul>
+      <ul id="drug-list" class="chips" aria-label="Medications you've added"></ul>
     </section>
 
     <div class="actions">
       <button id="go" class="primary" disabled>See plan costs</button>
-      <span id="go-hint" class="muted small">Pick a county and at least one drug.</span>
+      <span id="go-hint" class="go-hint">Pick a county and at least one medication.</span>
     </div>
 
-    <!-- Results -->
+    <!-- Results (loading / results / empty / error / not-found all render here) -->
     <section id="results" hidden aria-live="polite"></section>
+
+    <aside class="help-aside">
+      <strong>Prefer to talk to a person?</strong>
+      Free, unbiased Medicare help — no sales pitch — is available from your State Health Insurance
+      Assistance Program (SHIP).
+      <a href="https://www.shiphelp.org" rel="noopener" target="_blank">Find a counselor near you &rarr;</a>
+      or call 1-800-MEDICARE.
+    </aside>
   </main>
 
   <footer class="site-footer">
     <div class="wrap">
       <p id="provenance" class="provenance">Data: loading…</p>
-      <p class="small"><a href="/faq.html">FAQ &amp; plain-English Medicare terms →</a></p>
+      <p class="foot-links">
+        <a href="/faq.html">FAQ &amp; plain-English Medicare terms</a> &nbsp;·&nbsp;
+        <a href="/story.html">Why we built this</a>
+      </p>
       <p class="disclaimer">
-        <strong>Educational tool, not advice or enrollment.</strong> PlanRobin is a free,
-        non-commercial resource. It shows cost estimates computed from public CMS files and does
+        <strong>Educational tool — not advice or enrollment.</strong> PlanRobin is a free,
+        non-commercial resource and a <strong>private website, not affiliated with the federal
+        Medicare program</strong>. It shows cost estimates computed from public CMS files and does
         not sell insurance, recommend a plan, or enroll you in coverage. Actual costs can differ
-        with your pharmacy, days-supply, deductible status, and coverage phase. Confirm any plan
-        on <a href="https://www.medicare.gov" rel="noopener" target="_blank">Medicare.gov</a>
-        or 1-800-MEDICARE before making decisions.
+        with your pharmacy, days-supply, deductible status, and coverage phase. Confirm any plan on
+        <a href="https://www.medicare.gov" rel="noopener" target="_blank">Medicare.gov</a> or
+        1-800-MEDICARE before making decisions.
       </p>
     </div>
   </footer>
 
-  <script src="/app.js?v=2"></script>
+  <script src="/app.js?v=3"></script>
 </body>
 </html>
