@@ -35,6 +35,7 @@ function resolveFiles(dir) {
     planInfo: findFile(dir, ['plan information'], ['sample']),
     basicFormulary: findFile(dir, ['basic drugs formulary'], ['sample']),
     beneficiaryCost: findFile(dir, ['beneficiary cost'], ['sample', 'insulin']),
+    insulinCost: findFile(dir, ['insulin beneficiary cost'], ['sample']),
     geoLocator: findFile(dir, ['geographic locator'], ['sample']),
   };
 }
@@ -130,7 +131,22 @@ async function parseMissouri(sourceDir) {
     });
   }
 
-  return { files, counties, plans, planCounties, formularies, drugTiers, tierCosts };
+  // 5) insulin_costs for MO plans (drives the $35 insulin-cap override). Column names in the
+  //    file are lower-case; copay_* are dollars, coin_* are rates. Tier NULL for standard plans.
+  const insulinCosts = [];
+  for await (const r of streamRows(files.insulinCost)) {
+    if (!moPlanKeys.has(`${r.CONTRACT_ID}|${r.PLAN_ID}|${r.SEGMENT_ID}`)) continue;
+    insulinCosts.push({
+      contract_id: r.CONTRACT_ID, plan_id: r.PLAN_ID, segment_id: r.SEGMENT_ID,
+      tier: intOrNull(r.TIER), days_supply: intOrNull(r.DAYS_SUPPLY),
+      copay_pref: numOrNull(r.copay_amt_pref_insln), copay_nonpref: numOrNull(r.copay_amt_nonpref_insln),
+      copay_mail_pref: numOrNull(r.copay_amt_mail_pref_insln), copay_mail_nonpref: numOrNull(r.copay_amt_mail_nonpref_insln),
+      coin_pref: numOrNull(r.coin_amt_pref_insln), coin_nonpref: numOrNull(r.coin_amt_nonpref_insln),
+      coin_mail_pref: numOrNull(r.coin_amt_mail_pref_insln), coin_mail_nonpref: numOrNull(r.coin_amt_mail_nonpref_insln),
+    });
+  }
+
+  return { files, counties, plans, planCounties, formularies, drugTiers, tierCosts, insulinCosts };
 }
 
 module.exports = { parseMissouri, resolveFiles };

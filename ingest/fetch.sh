@@ -13,6 +13,7 @@ set -euo pipefail
 
 SOURCE="${1:?usage: fetch.sh <url-or-zip> <dest-dir>}"
 DEST="${2:?usage: fetch.sh <url-or-zip> <dest-dir>}"
+# 'beneficiary cost' matches both the standard AND the insulin beneficiary cost file.
 WANT='plan information|basic drugs formulary|beneficiary cost|geographic locator'
 
 mkdir -p "$DEST"
@@ -45,11 +46,11 @@ while IFS= read -r z; do
   base="$(basename "$z")"
   low="$(echo "$base" | tr '[:upper:]' '[:lower:]')"
   echo "$low" | grep -Eq "$WANT" || continue
-  echo "$low" | grep -Eq 'sample|insulin' && continue
+  echo "$low" | grep -Eq 'sample' && continue
   unzip -o -j "$z" -d "$DEST" >/dev/null
   found=$((found+1))
 done < <(find "$COMP" -iname '*.zip')
 
 echo "Extracted component files: $found"
 ls -1 "$DEST"/*.txt
-[ "$found" -ge 4 ] || { echo "ERROR: expected >=4 component files, got $found"; exit 1; }
+[ "$found" -ge 5 ] || { echo "ERROR: expected >=5 component files, got $found"; exit 1; }

@@ -49,6 +49,7 @@ function computeStats(p) {
     row_counts: {
       counties: p.counties.length, plans: p.plans.length, plan_counties: p.planCounties.length,
       formularies: p.formularies.length, drug_tiers: p.drugTiers.length, tier_costs: p.tierCosts.length,
+      insulin_costs: p.insulinCosts.length,
     },
     premium_mean: prem.length ? prem.reduce((a, b) => a + b, 0) / prem.length : null,
     premium_median: median(prem),
@@ -143,13 +144,14 @@ async function ingestInto(db, opts = {}) {
     // Idempotent load: replace all data in one transaction, tagged with this run.
     log('Loading (transactional replace)…');
     await db.query('BEGIN');
-    for (const t of ['tier_costs', 'drug_tiers', 'plan_counties', 'counties', 'plans', 'formularies']) await db.query(`delete from ${t}`);
+    for (const t of ['insulin_costs', 'tier_costs', 'drug_tiers', 'plan_counties', 'counties', 'plans', 'formularies']) await db.query(`delete from ${t}`);
     await bulkInsert(db, 'formularies', ['formulary_id', 'contract_year'], parsed.formularies, runId);
     await bulkInsert(db, 'counties', ['ssa_code', 'fips_code', 'name', 'state', 'pdp_region'], parsed.counties, runId);
     await bulkInsert(db, 'plans', ['contract_id', 'plan_id', 'segment_id', 'plan_name', 'contract_name', 'plan_type', 'snp', 'premium', 'deductible', 'formulary_id'], parsed.plans, runId);
     await bulkInsert(db, 'plan_counties', ['contract_id', 'plan_id', 'segment_id', 'ssa_code'], parsed.planCounties, runId);
     await bulkInsert(db, 'drug_tiers', ['formulary_id', 'rxcui', 'ndc', 'tier', 'prior_auth', 'step_therapy', 'quantity_limit', 'ql_amount', 'ql_days', 'selected_drug'], parsed.drugTiers, runId);
     await bulkInsert(db, 'tier_costs', ['contract_id', 'plan_id', 'segment_id', 'coverage_level', 'tier', 'days_supply', 'cost_type_pref', 'cost_amt_pref', 'cost_type_nonpref', 'cost_amt_nonpref', 'cost_type_mail_pref', 'cost_amt_mail_pref', 'cost_type_mail_nonpref', 'cost_amt_mail_nonpref', 'tier_specialty', 'ded_applies'], parsed.tierCosts, runId);
+    await bulkInsert(db, 'insulin_costs', ['contract_id', 'plan_id', 'segment_id', 'tier', 'days_supply', 'copay_pref', 'copay_nonpref', 'copay_mail_pref', 'copay_mail_nonpref', 'coin_pref', 'coin_nonpref', 'coin_mail_pref', 'coin_mail_nonpref'], parsed.insulinCosts, runId);
     await db.query('COMMIT');
 
     await db.query(`update ingest_runs set status='completed', finished_at=now(), row_counts=$2, file_stats=$3, checks=$4 where id=$1`,

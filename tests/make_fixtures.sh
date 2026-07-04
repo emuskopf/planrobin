@@ -8,6 +8,7 @@ DST="tests/fixtures"
 PI=$(ls "$SRC"/*'plan information'*.txt | grep -v sample | head -1)
 BF=$(ls "$SRC"/*'basic drugs formulary'*.txt | grep -v sample | head -1)
 BC=$(ls "$SRC"/*'beneficiary cost'*.txt | grep -v -e sample -e insulin | head -1)
+IN=$(ls "$SRC"/*'insulin beneficiary cost'*.txt | grep -v sample | head -1)
 GL=$(ls "$SRC"/*'geographic locator'*.txt | grep -v sample | head -1)
 
 # plan information: header + the target plan H4461-046 rows
@@ -21,6 +22,10 @@ awk -F'|' '$1=="00026408" && ($4=="596934" || $4=="596930")' "$BF" >> "$DST/basi
 # beneficiary cost: header + all rows for the target plan
 head -1 "$BC" > "$DST/beneficiary cost file PPUF_2026Q1.txt"
 awk -F'|' '$1=="H4461" && $2=="046"' "$BC" >> "$DST/beneficiary cost file PPUF_2026Q1.txt"
+
+# insulin beneficiary cost: header + all rows for the target plan
+head -1 "$IN" > "$DST/insulin beneficiary cost file PPUF_2026Q1.txt"
+awk -F'|' '$1=="H4461" && $2=="046"' "$IN" >> "$DST/insulin beneficiary cost file PPUF_2026Q1.txt"
 
 # geographic locator: header + all Missouri rows
 head -1 "$GL" > "$DST/geographic locator file PPUF_2026Q1.txt"
