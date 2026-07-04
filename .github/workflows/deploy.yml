@@ -22,8 +22,8 @@ jobs:
           cache: 'npm'
       - run: npm ci
 
-      - name: Acceptance test (gate — no deploy if the DB path regressed)
-        run: node tests/acceptance.test.js
+      - name: Tests (gate — override units + DB path == Milestone 0)
+        run: npm test
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

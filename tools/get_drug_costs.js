@@ -12,6 +12,7 @@
 // db is a handle from lib/db.js getDb(); the caller owns its lifecycle.
 
 const { interpretCost, DAYS_LABEL, PHASE_LABEL, parsePlanId, num } = require('../lib/cost');
+const { applyPerFillOverrides } = require('./overrides');
 
 async function getDrugCosts(rxcuis, planId, db) {
   const { contract, plan, segment } = parsePlanId(planId);
@@ -29,6 +30,23 @@ async function getDrugCosts(rxcuis, planId, db) {
     planId: `${pr.contract_id}-${pr.plan_id}`, contractId: pr.contract_id, planId3: pr.plan_id,
     segmentId: pr.segment_id, planName: pr.plan_name, formularyId: pr.formulary_id, ingestRunId: pr.ingest_run_id,
   };
+
+  // Plan year drives the statutory override parameters ($35 cap, $2,100 OOP cap). From the data.
+  const cy = await db.query(`select contract_year from formularies where formulary_id=$1`, [planInfo.formularyId]);
+  const planYear = parseInt(cy.rows[0] && cy.rows[0].contract_year, 10) || 2026;
+
+  // Plan-level insulin cost sharing (standard retail = nonpref), keyed tier -> days -> {copay,coin}.
+  const insRes = await db.query(
+    `select tier, days_supply, copay_nonpref, coin_nonpref from insulin_costs
+       where contract_id=$1 and plan_id=$2 and segment_id=$3`,
+    [contract, plan, segment]
+  );
+  const insulinByTierDays = {};
+  for (const r of insRes.rows) {
+    const tk = r.tier == null ? 'null' : String(r.tier);
+    (insulinByTierDays[tk] = insulinByTierDays[tk] || {})[String(r.days_supply)] =
+      { copay: r.copay_nonpref == null ? null : Number(r.copay_nonpref), coin: r.coin_nonpref == null ? null : Number(r.coin_nonpref) };
+  }
 
   const drugs = [];
   for (const rxcui of rxcuis) {
@@ -77,14 +95,33 @@ async function getDrugCosts(rxcuis, planId, db) {
       };
     }
 
+    // --- Statutory override layer (applied at the calculation layer, not in display code) ---
+    // Build the file-derived initial-coverage standard-retail cost per days-supply, then let the
+    // override module apply insulin cap / vaccine $0 / deductible rules. Both values are kept:
+    // costsByPhase stays file-derived; `overrides.effectivePerFill` is the override-applied cost.
+    const initial = costsByPhase['1'] && costsByPhase['1'].byDaysSupply;
+    const standardRetailByDays = {};
+    for (const d of ['1', '2', '4']) if (initial && initial[d]) standardRetailByDays[d] = initial[d].standardRetail;
+    const dedAppliesTier = !!(initial && (initial['1'] || initial['2'] || initial['4'] || {}).dedApplies);
+    const overrideModel = applyPerFillOverrides({
+      rxcui: String(rxcui), tier, dedAppliesTier, planYear,
+      standardRetailByDays, insulinByDays: insulinByTierDays[String(tier)] || insulinByTierDays['null'] || null,
+    });
+
     drugs.push({
       rxcui: String(rxcui), found: true, tier, tiers, multiTier: tiers.length > 1,
       ndcs: [...new Set(dRes.rows.map((r) => r.ndc))],
       flags, drugTierIngestRunId: dRes.rows[0].ingest_run_id, costsByPhase,
+      overrides: {
+        applied: overrideModel.appliedOverrides,          // rules that fired (empty if none)
+        isInsulin: overrideModel.isInsulin, isVaccine: overrideModel.isVaccine,
+        deductibleApplies: overrideModel.deductibleApplies, // post-override (false for insulin/vaccine)
+        effectivePerFill: overrideModel.perFill,           // override-applied standard-retail cost by days-supply
+      },
     });
   }
 
-  return { found: true, planId: planInfo.planId, plan: planInfo, drugs };
+  return { found: true, planId: planInfo.planId, plan: planInfo, planYear, drugs };
 }
 
 module.exports = { getDrugCosts };

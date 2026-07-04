@@ -15,9 +15,11 @@ GL=$(ls "$SRC"/*'geographic locator'*.txt | grep -v sample | head -1)
 head -1 "$PI" > "$DST/plan information PPUF_2026Q1.txt"
 awk -F'|' '$1=="H4461" && $2=="046"' "$PI" >> "$DST/plan information PPUF_2026Q1.txt"
 
-# basic formulary: header + formulary 00026408 rows for the two duloxetine RXCUIs
+# basic formulary: header + formulary 00026408 rows for the duloxetine RXCUIs (M0 case),
+# plus a covered insulin (Toujeo 1604544, tier 3) and an ACIP vaccine (Shingrix 1986830, tier 1)
+# so the statutory-override integration test has real subjects.
 head -1 "$BF" > "$DST/basic drugs formulary file PPUF_2026Q1.txt"
-awk -F'|' '$1=="00026408" && ($4=="596934" || $4=="596930")' "$BF" >> "$DST/basic drugs formulary file PPUF_2026Q1.txt"
+awk -F'|' '$1=="00026408" && ($4=="596934" || $4=="596930" || $4=="1604544" || $4=="1986830")' "$BF" >> "$DST/basic drugs formulary file PPUF_2026Q1.txt"
 
 # beneficiary cost: header + all rows for the target plan
 head -1 "$BC" > "$DST/beneficiary cost file PPUF_2026Q1.txt"

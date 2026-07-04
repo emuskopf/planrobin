@@ -18,7 +18,8 @@
     "ingest": "node ingest/run.js",
     "make-fixtures": "bash tests/make_fixtures.sh",
     "dev": "node dev/server.js",
-    "test": "node tests/acceptance.test.js"
+    "build-overrides": "node tools/overrides/build-classification.js",
+    "test": "node tests/overrides.test.js && node tests/acceptance.test.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
