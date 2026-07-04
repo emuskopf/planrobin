@@ -82,6 +82,9 @@ a:focus-visible { outline-offset: 3px; }
 .hero-aside { font-size: var(--fs-sm); color: var(--ink-3); max-width: 46ch; margin: 0 0 var(--sp-4); }
 .hero .story-link { font-size: var(--fs-sm); font-weight: 600; }
 .lede { font-size: var(--fs-md); color: var(--ink-2); max-width: 62ch; margin: 0 0 var(--sp-5); }
+/* story page: the three real questions, given quiet weight */
+.qs { margin: var(--sp-4) 0; padding-left: var(--sp-4); border-left: 4px solid var(--accent); }
+.qs p { font-size: var(--fs-md); font-weight: 600; color: var(--ink); margin: var(--sp-2) 0; }
 
 /* trust line/strip — features, not fine print */
 .trust-strip { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); align-items: center;
