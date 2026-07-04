@@ -6,6 +6,13 @@ pages_build_output_dir = "site"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+# Hyperdrive pools the Supabase connection at Cloudflare's edge, so the Worker makes one
+# hop instead of doing a full Postgres TLS+auth handshake per request (which blew the
+# Workers subrequest limit). Points at the Supabase SESSION pooler (port 5432).
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "dfed1413c36f406caf00a432eafd320d"
+
 # DATABASE_URL is NOT set here — add it as an encrypted Pages env var / secret in the
 # Cloudflare dashboard (or `wrangler pages secret put DATABASE_URL`). Point it at the
 # Supabase transaction pooler (port 6543). It never reaches the browser.
