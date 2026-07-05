@@ -588,8 +588,19 @@ function buildPassport(data) {
   inputs.append(meds);
   p1.append(inputs);
 
-  const top = data.plans.slice(0, 5);
-  p1.append(el('h2', { className: 'pp-h', textContent: `Top ${top.length} of ${data.planCount} plans, by estimated annual cost` }));
+  // Rank among plans that cover ALL the drugs. A cheaper-looking plan that skips one of your
+  // medications would leave you paying full price for it, so it isn't shown as a "top" plan —
+  // this is the same ranking the on-screen results use, made explicit so the numbers aren't a
+  // surprise next to the $0 partial-coverage plans lower in the list.
+  const coveringAll = data.plans.filter((p) => p.notCovered === 0);
+  const top = (coveringAll.length ? coveringAll : data.plans).slice(0, 5);
+  const nDrugs = state.drugs.size;
+  p1.append(el('div', { className: 'pp-coverage', textContent: coveringAll.length
+    ? `${coveringAll.length} of ${data.planCount} plans cover ${nDrugs === 1 ? 'your medication' : `all ${nDrugs} of your medications`}. The plans below are ranked by yearly cost among those. A plan that skips one of your drugs would leave you paying full price for it, so it isn’t shown here even if it looks cheaper.`
+    : `No plan in ${data.county.name} covers every medication on your list. The plans below cover the most, ranked by yearly cost; each drug’s coverage is shown per plan.` }));
+  p1.append(el('h2', { className: 'pp-h', textContent: coveringAll.length
+    ? `Top ${top.length} plans that cover all your medications, by yearly cost`
+    : `Top ${top.length} plans by coverage, then yearly cost` }));
   for (const p of top) p1.append(buildPassportPlan(p));
   doc.append(p1);
 

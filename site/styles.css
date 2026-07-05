@@ -328,6 +328,7 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-asof { font-size: 9pt; color: #333; }
   .pp-h { font-size: 13pt; margin: 12pt 0 6pt; border-bottom: 1px solid #999; padding-bottom: 2pt; }
   .pp-h3 { font-size: 11pt; margin: 10pt 0 4pt; }
+  .pp-coverage { font-size: 9.5pt; color: #333; margin: 4pt 0 2pt; }
   .pp-inputs { font-size: 10.5pt; margin-bottom: 6pt; }
   .pp-meds { margin: 2pt 0 0; padding-left: 16pt; }
   .pp-meds li { margin: 1pt 0; }
