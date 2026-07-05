@@ -1,0 +1,54 @@
+{
+ "query": "duloxetine",
+ "approximatedFrom": null,
+ "results": [
+  {
+   "rxcui": "596926",
+   "name": "duloxetine 20 MG Delayed Release Oral Capsule",
+   "tty": "SCD",
+   "isBrand": false,
+   "kind": "generic",
+   "onFormulary": true
+  },
+  {
+   "rxcui": "596930",
+   "name": "duloxetine 30 MG Delayed Release Oral Capsule",
+   "tty": "SCD",
+   "isBrand": false,
+   "kind": "generic",
+   "onFormulary": true
+  },
+  {
+   "rxcui": "616402",
+   "name": "duloxetine 40 MG Delayed Release Oral Capsule",
+   "tty": "SCD",
+   "isBrand": false,
+   "kind": "generic",
+   "onFormulary": true
+  },
+  {
+   "rxcui": "596934",
+   "name": "duloxetine 60 MG Delayed Release Oral Capsule",
+   "tty": "SCD",
+   "isBrand": false,
+   "kind": "generic",
+   "onFormulary": true
+  },
+  {
+   "rxcui": "2200174",
+   "name": "Sprinkle duloxetine 20 MG Delayed Release Oral Capsule [Drizalma]",
+   "tty": "SBD",
+   "isBrand": true,
+   "kind": "brand",
+   "onFormulary": true
+  },
+  {
+   "rxcui": "2200177",
+   "name": "Sprinkle duloxetine 30 MG Delayed Release Oral Capsule [Drizalma]",
+   "tty": "SBD",
+   "isBrand": true,
+   "kind": "brand",
+   "onFormulary": true
+  }
+ ]
+}

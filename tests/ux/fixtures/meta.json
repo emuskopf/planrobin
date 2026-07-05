@@ -1,0 +1,17 @@
+{
+ "quarter": "2026-Q1",
+ "ingestedAt": "2026-07-05T03:31:20.359Z",
+ "downloadDate": "2026-04-08T00:00:00.000Z",
+ "scope": "MO",
+ "rowCounts": {
+  "plans": 155,
+  "counties": 115,
+  "drug_tiers": 104285,
+  "tier_costs": 4809,
+  "drug_prices": 1500717,
+  "formularies": 31,
+  "insulin_costs": 1246,
+  "plan_counties": 5597
+ },
+ "source": "CMS Prescription Drug Plan Formulary, Pharmacy Network, and Pricing PUF"
+}

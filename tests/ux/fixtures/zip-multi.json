@@ -1,0 +1,28 @@
+{
+ "status": "ok",
+ "zip": "65041",
+ "multi": true,
+ "counties": [
+  {
+   "code": "26360",
+   "name": "Gasconade",
+   "state": "Missouri",
+   "fips": "29073",
+   "resRatio": 0.8762
+  },
+  {
+   "code": "26690",
+   "name": "Montgomery",
+   "state": "Missouri",
+   "fips": "29139",
+   "resRatio": 0.1031
+  },
+  {
+   "code": "26991",
+   "name": "Warren",
+   "state": "Missouri",
+   "fips": "29219",
+   "resRatio": 0.0207
+  }
+ ]
+}

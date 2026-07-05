@@ -25,6 +25,14 @@ jobs:
       - name: Tests (gate — override units + DB path == Milestone 0)
         run: npm test
 
+      # UX floor gate: overlap / horizontal-overflow / contrast / touch-target / focus / type,
+      # across every page + major state × {360,412}px × {default,200%}. Hermetic — the suite
+      # replays canned APIs (no DB), so it needs no DATABASE_URL. A regression blocks the deploy.
+      - name: UX floor suite (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:ux
+
       # Second gate: exercise the batched results query through the SAME driver the Workers runtime
       # uses (postgres.js) against live Supabase. Blocks the deploy if a DB/driver issue would 500
       # the results endpoint — the current site stays live until it's fixed.
