@@ -239,15 +239,17 @@ details.breakdown > summary { font-size: var(--fs-sm); }
   border-radius: var(--radius-sm); color: var(--ink-2); font-size: var(--fs-sm); }
 
 /* drug rows */
-.drug-row { display: grid; grid-template-columns: 1fr auto; gap: var(--sp-2) var(--sp-4); align-items: baseline;
-  padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line); }
+.drug-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); gap: var(--sp-1) var(--sp-4);
+  align-items: baseline; padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line); }
 .drug-row:first-of-type { border-top: 0; }
-.drug-name { font-weight: 600; }
-.headline { text-align: right; font-variant-numeric: tabular-nums; }
+.drug-name { font-weight: 600; overflow-wrap: anywhere; }
+/* min-width:0 + wrap so a long cost string can NEVER overflow its track and overprint the name */
+.headline { text-align: right; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
 .headline .amt { font-weight: 700; font-size: var(--fs-md); }
 .annual-drug { color: var(--ink-2); font-size: var(--fs-sm); }
 .ic { display: inline-flex; align-items: center; }
 .dr-left { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.dr-left > div { min-width: 0; } /* the name line must be able to shrink + wrap, not force the cost track */
 .dr-left > .ic { color: var(--good); flex: none; margin-top: 3px; }
 
 /* status pills — color + ICON + word, never color alone */
@@ -313,6 +315,14 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .plan-head { flex-direction: column; }
   .annual { text-align: left; }
   .hero { padding-top: var(--sp-6); }
+  /* Stack drug rows: name (with tier/flag badges) on its own line(s), cost full-width below.
+     Removes all column competition so nothing can squeeze or overprint on a phone. */
+  .drug-row { grid-template-columns: 1fr; }
+  .headline { text-align: left; }
+  /* Breakdown rows: let the label wrap; the value stays put (both are flex items, never overlap). */
+  .bd-label { min-width: 0; }
+  /* Phase/channel table can be wider than a phone — scroll it instead of crushing the cells. */
+  .detail-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
 /* ---------- share bar (screen) ---------- */
