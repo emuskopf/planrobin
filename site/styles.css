@@ -49,6 +49,9 @@ body {
   margin: 0; background: var(--bg); color: var(--ink);
   font-family: var(--font); font-size: var(--fs-base); line-height: var(--lh);
   -webkit-font-smoothing: antialiased;
+  /* Site-wide guard: a long word/token can never force horizontal overflow at large font/zoom,
+     whatever the OS font stack's metrics. Only breaks a word when it wouldn't otherwise fit. */
+  overflow-wrap: anywhere;
 }
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--sp-5); }
 

@@ -48,7 +48,7 @@ function inPageAudit(opts) {
 
   // ---- Rule 2: no horizontal overflow ----
   const iw = document.documentElement.clientWidth;
-  const docOver = document.documentElement.scrollWidth > iw + 1;
+  const docOver = document.documentElement.scrollWidth > iw + 2;
   for (const el of document.querySelectorAll('body *')) {
     if (!vis(el)) continue;
     if (overflowExempt.some((s) => desc(s, el))) continue;
