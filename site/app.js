@@ -149,9 +149,14 @@ function wireAutocomplete() {
   }
 }
 
+// Quantity presets — units per 30-day fill, framed by how often you take it (covers daily pills
+// and monthly injectables). Only matters for coinsurance (%) drugs; copays are flat regardless.
+const FREQ = [[30, '1 a day'], [60, '2 a day'], [90, '3 a day'], [1, '1 a month']];
+const qtyLabel = (q) => { const f = FREQ.find(([v]) => v === q); return f ? f[1] : q + '/fill'; };
+
 function addDrug(r) {
   if (state.drugs.size >= 10 || state.drugs.has(r.rxcui)) return;
-  state.drugs.set(r.rxcui, { label: r.name, kind: r.kind });
+  state.drugs.set(r.rxcui, { label: r.name, kind: r.kind, qty: 30 });
   renderChips(); refreshGo(); syncResults();
 }
 function removeDrug(rxcui) { state.drugs.delete(rxcui); renderChips(); refreshGo(); syncResults(); }
@@ -159,9 +164,12 @@ function removeDrug(rxcui) { state.drugs.delete(rxcui); renderChips(); refreshGo
 function renderChips() {
   const ul = $('#drug-list'); ul.innerHTML = '';
   for (const [rxcui, d] of state.drugs) {
+    const freq = el('select', { className: 'qty', title: 'How often you take it — used to estimate percentage (coinsurance) costs', ariaLabel: 'How often you take ' + d.label });
+    for (const [val, label] of FREQ) { const o = el('option', { value: String(val), textContent: label }); if (val === d.qty) o.selected = true; freq.append(o); }
+    freq.addEventListener('change', () => { const e = state.drugs.get(rxcui); if (e) { e.qty = Number(freq.value); syncResults(); } });
     const btn = el('button', { type: 'button', textContent: '×', title: 'Remove', ariaLabel: 'Remove ' + d.label });
     btn.addEventListener('click', () => removeDrug(rxcui));
-    ul.append(el('li', {}, [el('span', { textContent: d.label }), el('span', { className: 'badge ' + d.kind, textContent: d.kind }), btn]));
+    ul.append(el('li', {}, [el('span', { textContent: d.label }), el('span', { className: 'badge ' + d.kind, textContent: d.kind }), freq, btn]));
   }
 }
 
@@ -188,9 +196,10 @@ async function runResults() {
   const box = $('#results'); box.hidden = false; box.innerHTML = '';
   renderSkeleton(box);
   try {
+    const quantities = Object.fromEntries([...state.drugs].map(([rx, d]) => [rx, d.qty]));
     const data = await getJSON('/api/results', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ county: state.county, rxcuis: [...state.drugs.keys()] }),
+      body: JSON.stringify({ county: state.county, rxcuis: [...state.drugs.keys()], quantities }),
     });
     if (mine !== runSeq) return; // a newer run superseded this one
     renderResults(data);
@@ -304,9 +313,9 @@ function renderPlan(p) {
 }
 
 // Itemized, plain-English breakdown of exactly what's in (and out of) the headline number.
-// The headline is the SUM of what we can honestly total (premium + flat copays). Coinsurance
-// drugs (no dose -> no honest annual total) and not-covered drugs are shown here by name,
-// never folded into the number as a fake $0.
+// Premium + flat copays + coinsurance-estimated make up the total (which stops at the $2,000 cap).
+// Coinsurance is estimated from the quantity you picked; a coinsurance drug with no published
+// price, and any not-covered drug, are shown by name and never folded in as a fake number.
 function renderBreakdown(p) {
   const b = p.breakdown || {};
   const wrap = el('details', { className: 'breakdown' });
@@ -318,20 +327,32 @@ function renderBreakdown(p) {
     r.append(el('span', { className: 'bd-val', textContent: value }));
     return r;
   };
-  rows.append(line('Premium', money(b.premiumAnnual || 0) + '/yr'));
-  rows.append(line('Covered drugs (flat copays)', money(b.copayAnnual || 0) + '/yr'));
+  const rateOf = (d) => (d && d.headline && d.headline.rate != null) ? Math.round(d.headline.rate * 100) + '%' : 'coinsurance';
 
-  // Coinsurance drugs — shown with the plan's real per-unit price, never a fabricated total.
-  for (const rxcui of (b.coinsuranceRxcuis || [])) {
-    const d = p.drugs[rxcui] || {}, meta = state.drugs.get(rxcui) || { label: rxcui };
-    const rate = d.headline && d.headline.rate != null ? Math.round(d.headline.rate * 100) + '%' : 'coinsurance';
-    const np = d.negotiatedPrice;
-    const detail = (np && np.unitCostByDays && np.unitCostByDays['30'] != null)
-      ? `${rate} coinsurance on a drug the plan prices at about ${money(np.unitCostByDays['30'])}/unit — your yearly cost depends on your dose, so it isn’t in the total above.`
-      : `${rate} coinsurance — this plan’s negotiated price for it isn’t in the data, so we can’t include it in the total.`;
+  rows.append(line('Premium', money(b.premiumAnnual || 0) + '/yr'));
+  if ((b.copayAnnual || 0) > 0) rows.append(line('Covered drugs (flat copays)', money(b.copayAnnual) + '/yr'));
+
+  // Coinsurance drugs we CAN estimate — shows the dollar estimate + exactly how it was computed,
+  // tied to the quantity selector so the reader knows it's their number to adjust.
+  for (const rxcui of (b.coinsuranceEstRxcuis || [])) {
+    const d = p.drugs[rxcui] || {}, meta = state.drugs.get(rxcui) || { label: rxcui }, est = d.estimated || {};
+    const r = el('div', { className: 'bd-line bd-coins' });
+    const top = el('span', { className: 'bd-coins-top' });
+    top.append(el('strong', { textContent: meta.label }));
+    top.append(el('span', { className: 'bd-val', textContent: '≈ ' + money(est.annual || 0) + '/yr' }));
+    r.append(top);
+    r.append(el('span', { className: 'bd-note', textContent:
+      `${rateOf(d)} coinsurance, estimated from “${qtyLabel(est.quantity)}” at about ${money(est.unitCost || 0)}/unit. Change the quantity on this drug if that isn’t your dose.` }));
+    rows.append(r);
+  }
+
+  // Coinsurance drugs with NO published price — honest NOT-FOUND, left out of the total.
+  for (const rxcui of (b.coinsuranceNoPriceRxcuis || [])) {
+    const meta = state.drugs.get(rxcui) || { label: rxcui };
     const r = el('div', { className: 'bd-line bd-coins' });
     r.append(el('span', { className: 'bd-label' }, [el('strong', { textContent: meta.label })]));
-    r.append(el('span', { className: 'bd-note', textContent: detail }));
+    r.append(el('span', { className: 'bd-note', textContent:
+      `${rateOf(p.drugs[rxcui])} coinsurance — this plan’s negotiated price isn’t in the data, so we can’t include it. Your true total is higher.` }));
     rows.append(r);
   }
 
@@ -348,14 +369,14 @@ function renderBreakdown(p) {
   // Cap milestone, where it binds.
   if (b.capHit && b.capHit.reached && b.capHit.month) {
     rows.append(el('div', { className: 'bd-line bd-cap' }, [
-      el('span', { className: 'bd-note', textContent: `You’d reach your ${money(b.oopCap)} yearly out-of-pocket cap around ${MONTHS[b.capHit.month]}; covered drugs are $0 after that.` }),
+      el('span', { className: 'bd-note', textContent: `You’d reach your ${money(b.oopCap)} yearly out-of-pocket cap around ${MONTHS[b.capHit.month]}; covered drugs are $0 after that${b.capBinds ? ', so the total below is less than the lines above add up to' : ''}.` }),
     ]));
   }
 
   rows.append(line('Estimated total', money(b.total || 0) + '/yr', 'bd-total'));
-  if (!p.annualComplete) {
+  if (b.hasUnpriceable) {
     rows.append(el('p', { className: 'bd-incomplete', textContent:
-      'One or more of your drugs couldn’t be included in this total (see above) — your true yearly cost is higher.' }));
+      'One or more of your drugs couldn’t be included (no published price) — your true yearly cost is higher.' }));
   }
   wrap.append(rows);
   return wrap;
@@ -417,10 +438,13 @@ function renderDrugRow(rxcui, meta, res) {
     right.append(el('span', { className: 'annual-drug', textContent: ` · ${money(res.headline.dollars * 12)}/yr` }));
   } else {
     right.append(el('span', { className: 'amt', textContent: res.headline.display }));
-    // Coinsurance: show the plan's real negotiated per-unit price where the file has it (honest,
-    // per-unit — never multiplied by an assumed dose), else say the price is absent.
-    const up = res.negotiatedPrice && res.negotiatedPrice.unitCostByDays && res.negotiatedPrice.unitCostByDays['30'];
-    right.append(el('span', { className: 'annual-drug', textContent: up != null ? ` · of ~${money(up)}/unit · yearly cost depends on your dose` : ' · plan’s price not in data' }));
+    // Coinsurance: with a price + your quantity we show a dollar estimate; without a price we say so.
+    if (res.estimated) {
+      right.append(el('span', { className: 'annual-drug', textContent: ` · ≈ ${money(res.estimated.annual)}/yr est.` }));
+    } else {
+      const up = res.negotiatedPrice && res.negotiatedPrice.unitCostByDays && res.negotiatedPrice.unitCostByDays['30'];
+      right.append(el('span', { className: 'annual-drug', textContent: up != null ? ` · of ~${money(up)}/unit` : ' · plan’s price not in data' }));
+    }
   }
   // Trust feature: when federal law sets the price, say so plainly ("capped by federal law").
   const rule = (res.appliedOverrides || [])[0];

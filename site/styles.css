@@ -140,6 +140,9 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 .chips button { flex: none; width: 32px; height: 32px; border: 0; background: #e6e2d8; color: var(--ink); border-radius: 999px;
   cursor: pointer; font-size: 18px; line-height: 1; }
 .chips button:hover { background: var(--line-2); }
+/* per-drug frequency (drives coinsurance $ estimate) — compact, inside the chip */
+.chips .qty { width: auto; min-height: 30px; padding: 2px var(--sp-2); font-size: var(--fs-fine);
+  border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface); color: var(--ink-2); }
 
 /* ---------- actions ---------- */
 .actions { display: flex; align-items: center; gap: var(--sp-4); margin: 0 0 var(--sp-6); flex-wrap: wrap; }
@@ -204,6 +207,7 @@ details.breakdown > summary { font-size: var(--fs-sm); }
 .bd-note { color: var(--ink-2); font-size: var(--fs-sm); max-width: 60ch; text-align: right; }
 .bd-coins { flex-direction: column; align-items: stretch; gap: 2px; }
 .bd-coins .bd-note { text-align: left; }
+.bd-coins-top { display: flex; justify-content: space-between; gap: var(--sp-4); align-items: baseline; }
 .bd-notcov { flex-direction: column; align-items: stretch; gap: 2px; }
 .bd-notcov .bd-label { display: inline-flex; align-items: center; gap: 6px; color: var(--notcov); font-weight: 700; }
 .bd-notcov .bd-note { text-align: left; }
