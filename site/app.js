@@ -156,9 +156,12 @@ function wireAutocomplete() {
     const list = data.results.filter((r) => !state.drugs.has(r.rxcui));
     if (list.length === 0) { box.append(el('li', { className: 'sugg-note', textContent: 'No matching products.' })); return; }
     list.forEach((r, i) => {
-      const kids = [el('span', { className: 'nm', textContent: r.name }), el('span', { className: 'badge ' + r.kind, textContent: r.kind })];
-      if (r.onFormulary === false) kids.push(el('span', { className: 'badge nocover', title: 'No Missouri plan lists this exact product', textContent: 'not on MO plans' }));
-      const li = el('li', { id: 'sugg-' + i, role: 'option', className: r.onFormulary === false ? 'sugg-nocover' : '' }, kids);
+      // Badges live in their own group so they can wrap BELOW the name (line 2) on a narrow screen
+      // instead of squeezing the name column — a name that can crush must wrap under what squeezed it.
+      const badges = [el('span', { className: 'badge ' + r.kind, textContent: r.kind })];
+      if (r.onFormulary === false) badges.push(el('span', { className: 'badge nocover', title: 'No Missouri plan lists this exact product', textContent: 'not on MO plans' }));
+      const li = el('li', { id: 'sugg-' + i, role: 'option', className: r.onFormulary === false ? 'sugg-nocover' : '' },
+        [el('span', { className: 'nm', textContent: r.name }), el('div', { className: 'sugg-badges' }, badges)]);
       li._data = r;
       li.addEventListener('click', () => choose(li));
       li.addEventListener('mousemove', () => { if (active >= 0) options[active].classList.remove('active'); active = options.indexOf(li); li.classList.add('active'); });
@@ -174,7 +177,9 @@ const qtyLabel = (q) => { const f = FREQ.find(([v]) => v === q); return f ? f[1]
 
 function addDrug(r) {
   if (state.drugs.size >= 10 || state.drugs.has(r.rxcui)) return;
-  state.drugs.set(r.rxcui, { label: r.name, kind: r.kind, qty: 30 });
+  // offFormulary persists the "not on MO plans" warning onto the chip, so it doesn't vanish when the
+  // dropdown closes (and gives the chip the same two-badge layout the suggestion has).
+  state.drugs.set(r.rxcui, { label: r.name, kind: r.kind, qty: 30, offFormulary: r.onFormulary === false });
   renderChips(); refreshGo(); syncResults();
 }
 function removeDrug(rxcui) { state.drugs.delete(rxcui); renderChips(); refreshGo(); syncResults(); }
@@ -189,7 +194,9 @@ function renderChips() {
     btn.addEventListener('click', () => removeDrug(rxcui));
     // Two groups so nothing crushes the name: identity (name + generic/brand badge) wraps freely;
     // the fixed controls (quantity + remove) sit together and drop below the name on narrow screens.
-    const idWrap = el('div', { className: 'chip-id' }, [el('span', { className: 'chip-name', textContent: d.label }), el('span', { className: 'badge ' + d.kind, textContent: d.kind })]);
+    const idKids = [el('span', { className: 'chip-name', textContent: d.label }), el('span', { className: 'badge ' + d.kind, textContent: d.kind })];
+    if (d.offFormulary) idKids.push(el('span', { className: 'badge nocover', title: 'No Missouri plan lists this exact product', textContent: 'not on MO plans' }));
+    const idWrap = el('div', { className: 'chip-id' }, idKids);
     const controls = el('div', { className: 'chip-controls' }, [freq, btn]);
     ul.append(el('li', {}, [idWrap, controls]));
   }

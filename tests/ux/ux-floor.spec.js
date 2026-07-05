@@ -21,6 +21,10 @@ const STATES = [
   { name: 'entry-empty', async setup(page) { await page.goto('/'); } },
   { name: 'entry-chips', async setup(page) { await page.goto('/'); await H.addDrug(page, '40 MG'); await H.addDrug(page, '20 MG'); } },
   { name: 'entry-autocomplete-open', async setup(page) { await page.goto('/'); await page.fill('#drug-input', 'duloxetine'); await page.waitForSelector('#suggestions li[role=option]', { state: 'visible' }); } },
+  // Two-badge, long-name suggestion (brand + "not on MO plans") — the Toprol crush repro.
+  { name: 'entry-autocomplete-crush', rxnorm: 'rxnorm-crush.json', async setup(page) { await page.goto('/'); await page.fill('#drug-input', 'toprol'); await page.waitForSelector('#suggestions li[role=option]', { state: 'visible' }); } },
+  // Two-badge chip (brand + "not on MO plans") from an off-formulary pick.
+  { name: 'entry-chip-crush', rxnorm: 'rxnorm-crush.json', async setup(page) { await page.goto('/'); await H.addDrug(page, 'Toprol'); await page.waitForSelector('#drug-list .chip-name'); } },
   { name: 'entry-zip-disambiguation', async setup(page) { await page.goto('/'); await page.fill('#zip', '65041'); await page.waitForSelector('.county-choice', { state: 'visible' }); } },
   { name: 'entry-zip-confirmed', async setup(page) { await page.goto('/'); await page.fill('#zip', '63011'); await page.waitForSelector('.zip-confirm', { state: 'visible' }); } },
   { name: 'entry-zip-out-of-area', async setup(page) { await page.goto('/'); await page.fill('#zip', '90210'); await page.waitForSelector('.zip-status.warn', { state: 'visible' }); } },
@@ -37,7 +41,7 @@ for (const st of STATES) {
     for (const vw of VIEWPORTS) {
       for (const ft of FONTS) {
         test(`${st.name} @ ${vw}px / ${ft.name}`, async ({ page }) => {
-          await H.interceptApis(page, { results: st.results });
+          await H.interceptApis(page, { results: st.results, rxnorm: st.rxnorm });
           await page.setViewportSize({ width: vw, height: 900 });
           await st.setup(page);
           await H.setFontScale(page, ft.scale);
