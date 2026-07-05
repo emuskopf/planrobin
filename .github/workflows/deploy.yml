@@ -25,6 +25,14 @@ jobs:
       - name: Tests (gate — override units + DB path == Milestone 0)
         run: npm test
 
+      # Second gate: exercise the batched results query through the SAME driver the Workers runtime
+      # uses (postgres.js) against live Supabase. Blocks the deploy if a DB/driver issue would 500
+      # the results endpoint — the current site stays live until it's fixed.
+      - name: Smoke — batched results path via postgres.js @ live Supabase
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/perf/smoke_pg.js
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
         with:
