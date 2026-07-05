@@ -760,7 +760,7 @@ function renderPhases(phases) {
       ]));
     }
   }
-  t.append(tb); det.append(t);
+  t.append(tb); det.append(el('div', { className: 'detail-scroll' }, [t])); // scrolls on narrow screens
 
   // Short definitions + a link to the fuller FAQ article.
   const legend = el('div', { className: 'phase-legend' });
