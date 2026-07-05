@@ -20,7 +20,7 @@ const ic = (name) => { const s = el('span', { className: 'ic' }); s.innerHTML = 
 // Which applied override → a plain-English "by federal law" badge (the trust feature).
 const LAW_BADGE = { insulin_cap_35: 'capped by federal law', acip_vaccine_free: 'free by federal law' };
 
-const state = { county: '', drugs: new Map() /* rxcui -> {label, kind} */ };
+const state = { county: '', drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false };
 const PHASES = [['0', 'Pre-deductible'], ['1', 'Initial coverage'], ['3', 'Catastrophic']];
 const DAYS = [['1', '30-day'], ['2', '90-day']];
 
@@ -77,6 +77,18 @@ async function init() {
   $('#county').addEventListener('change', (e) => { state.county = e.target.value; refreshGo(); syncResults(); });
   wireAutocomplete();
   $('#go').addEventListener('click', runResults);
+
+  // Ctrl/⌘-P and the "Print this comparison" button both build the Plan Passport just before print.
+  window.addEventListener('beforeprint', () => {
+    if (!state.lastData) return;
+    const host = ensurePassportHost();
+    host.innerHTML = ''; host.append(buildPassport(state.lastData));
+    document.body.classList.add('printing-passport');
+  });
+  window.addEventListener('afterprint', () => { document.body.classList.remove('printing-passport'); });
+
+  // A share link in the fragment restores the search and reruns it against CURRENT data.
+  await maybeRestoreFromHash();
 }
 
 function renderProvenance(meta) {
@@ -229,6 +241,8 @@ function renderSkeleton(box) {
 function money(n) { return '$' + Number(n).toFixed(2); }
 
 function renderResults(data) {
+  state.lastData = data;
+  updateFragment(); // keep the address bar a shareable/bookmarkable link
   const box = $('#results'); box.innerHTML = '';
   box.append(el('h2', {}, `Plans in ${data.county.name}, ${data.county.state}`));
   const d = data.meta && data.meta.ingestedAt ? new Date(data.meta.ingestedAt) : null;
@@ -236,6 +250,10 @@ function renderResults(data) {
     el('span', { className: 'muted small', textContent: `${data.planCount} plans · sorted by estimated annual cost` }),
     el('span', { className: 'muted small', textContent: data.meta && data.meta.quarter ? `Data: CMS ${data.meta.quarter}${d ? ', loaded ' + d.toLocaleDateString() : ''}` : '' }),
   ]));
+  if (state.restoredFromLink) {
+    box.append(el('div', { className: 'restore-note', textContent: `Reopened from a saved link — rerun against today's data (CMS ${data.meta && data.meta.quarter || ''}).` }));
+  }
+  box.append(renderShareBar(data));
   box.append(renderCoverageSummary(data));
   box.append(el('div', { className: 'formula', textContent: data.formula }));
   box.append(renderKey());
@@ -429,6 +447,181 @@ function renderSavings(p) {
   det.append(faqLink('preferred-pharmacy'));
   wrap.append(det);
   return wrap;
+}
+
+// ---------- share link (state lives in the URL fragment) ----------
+const SAVINGS_LOC = {
+  preferredRetail: "this plan's preferred pharmacies",
+  standardMail: "this plan's mail-order pharmacy",
+  preferredMail: "this plan's preferred mail-order pharmacy",
+};
+function shareStateForUrl() {
+  return { county: state.county, drugs: [...state.drugs].map(([rx, d]) => [rx, d.qty, d.label, d.kind]) };
+}
+function updateFragment() {
+  try {
+    if (state.county && state.drugs.size >= 1) history.replaceState(null, '', '#' + PRShare.encode(shareStateForUrl()));
+  } catch (_) { /* fragment sync is best-effort */ }
+}
+
+async function maybeRestoreFromHash() {
+  const dec = PRShare.decode(location.hash);
+  if (!dec.ok) return;
+  const sel = $('#county');
+  const countyInList = [...sel.options].some((o) => o.value === dec.county);
+  if (countyInList) { sel.value = dec.county; state.county = dec.county; }
+  for (const d of dec.drugs) {
+    if (state.drugs.size >= 10) break;
+    state.drugs.set(d.rxcui, { label: d.name || d.rxcui, kind: d.kind || 'drug', qty: d.qty });
+  }
+  renderChips(); refreshGo();
+  state.restoredFromLink = true;
+  if (state.county && state.drugs.size >= 1) {
+    runResults(); // reruns against CURRENT data; unresolved drugs show as "not covered"
+  } else if (dec.drugs.length) {
+    // County didn't resolve — restore the list, say so plainly, let them pick a county.
+    $('#go-hint').textContent = 'Restored your medication list from a link — pick your county to see plans.';
+  }
+}
+
+function renderShareBar(data) {
+  const bar = el('div', { className: 'share-bar' });
+  bar.append(el('h3', { className: 'share-h', textContent: 'Save or share this search' }));
+  const actions = el('div', { className: 'share-actions' });
+
+  const copyBtn = el('button', { type: 'button', className: 'share-btn', textContent: 'Copy link' });
+  copyBtn.addEventListener('click', async () => {
+    updateFragment();
+    try { await navigator.clipboard.writeText(location.href); copyBtn.textContent = 'Link copied ✓'; setTimeout(() => { copyBtn.textContent = 'Copy link'; }, 2000); }
+    catch (_) { window.prompt('Copy this link:', location.href); }
+  });
+  actions.append(copyBtn);
+
+  if (navigator.share) {
+    const shareBtn = el('button', { type: 'button', className: 'share-btn', textContent: 'Share' });
+    shareBtn.addEventListener('click', async () => { updateFragment(); try { await navigator.share({ title: 'PlanRobin drug plan comparison', url: location.href }); } catch (_) {} });
+    actions.append(shareBtn);
+  }
+
+  const printBtn = el('button', { type: 'button', className: 'share-btn', textContent: 'Print this comparison' });
+  printBtn.addEventListener('click', () => window.print());
+  actions.append(printBtn);
+  bar.append(actions);
+
+  bar.append(el('p', { className: 'share-warn', textContent: 'This link contains your medication list. Anyone you send it to can see it — share only with people you trust.' }));
+  bar.append(el('p', { className: 'share-super', textContent: 'Bookmark it and reopen it this fall — it reruns against the newest plan data automatically.' }));
+  return bar;
+}
+
+// ---------- Plan Passport (client-side 2-page print/PDF) ----------
+function ensurePassportHost() {
+  let host = document.getElementById('passport');
+  if (!host) { host = el('div', { id: 'passport', className: 'passport' }); document.body.append(host); }
+  return host;
+}
+
+function buildQR(text) {
+  try {
+    if (typeof qrcode === 'undefined') return null;
+    const qr = qrcode(0, 'L'); qr.addData(text); qr.make();
+    const n = qr.getModuleCount(), cell = 4, margin = 4 * cell, size = n * cell + margin * 2;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`); svg.setAttribute('class', 'pp-qr'); svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'QR code linking to this comparison');
+    const bg = document.createElementNS(NS, 'rect'); bg.setAttribute('width', size); bg.setAttribute('height', size); bg.setAttribute('fill', '#fff'); svg.append(bg);
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) {
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', margin + c * cell); rect.setAttribute('y', margin + r * cell); rect.setAttribute('width', cell); rect.setAttribute('height', cell); rect.setAttribute('fill', '#000');
+      svg.append(rect);
+    }
+    return svg;
+  } catch (_) { return null; } // the URL is printed as text regardless
+}
+
+function buildPassportPlan(p) {
+  const card = el('div', { className: 'pp-plan' });
+  card.append(el('div', { className: 'pp-plan-head' }, [
+    el('div', { className: 'pp-plan-name', textContent: p.planName }),
+    el('div', { className: 'pp-plan-total', textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (p.annualComplete ? '' : ' so far') }),
+  ]));
+  card.append(el('div', { className: 'pp-plan-sub', textContent: `${p.planType} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}` }));
+  if (p.savings) {
+    const c = PRFormat.savingsCopy(p, SAVINGS_LOC[p.savings.channel] || "this plan's preferred pharmacies");
+    card.append(el('div', { className: 'pp-savings', textContent: 'Save about ' + c.amount + c.tail }));
+  }
+  const tbl = el('table', { className: 'pp-drugs' });
+  for (const [rxcui, meta] of state.drugs) {
+    const res = p.drugs[rxcui];
+    let tier = '', cost;
+    if (!res || !res.covered) { cost = 'Not covered — you’d pay full price'; }
+    else {
+      const fl = [res.flags.priorAuth && 'PA', res.flags.stepTherapy && 'ST', res.flags.quantityLimit && 'QL'].filter(Boolean).join(' ');
+      tier = 'Tier ' + res.tier + (fl ? ' ' + fl : '');
+      if (res.headline.kind === 'copay') cost = money(res.headline.dollars) + '/fill';
+      else if (res.estimated) cost = res.headline.display + ' ≈ ' + PRFormat.dollars(res.estimated.annual) + '/yr';
+      else cost = res.headline.display;
+      const rule = (res.appliedOverrides || [])[0];
+      if (rule && LAW_BADGE[rule.rule]) cost += ' — ' + LAW_BADGE[rule.rule];
+    }
+    tbl.append(el('tr', {}, [el('td', { textContent: meta.label }), el('td', { textContent: tier }), el('td', { textContent: cost })]));
+  }
+  card.append(tbl);
+  return card;
+}
+
+function buildPassport(data) {
+  const meta = data.meta || {};
+  const asOf = meta.ingestedAt ? new Date(meta.ingestedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'unknown date';
+  const doc = el('div', { className: 'passport-doc' });
+
+  // --- Page 1: inputs + top plans ---
+  const p1 = el('section', { className: 'pp-page' });
+  p1.append(el('div', { className: 'pp-head' }, [
+    el('div', { className: 'pp-brand', textContent: 'PlanRobin — Medicare drug plan comparison' }),
+    el('div', { className: 'pp-asof', textContent: `Data: CMS ${meta.quarter || ''}, loaded ${asOf}` }),
+  ]));
+  const inputs = el('div', { className: 'pp-inputs' });
+  inputs.append(el('div', {}, [el('strong', { textContent: 'County: ' }), document.createTextNode(`${data.county.name}, ${data.county.state}`)]));
+  inputs.append(el('div', {}, [el('strong', { textContent: 'Medications (30-day fills): ' })]));
+  const meds = el('ul', { className: 'pp-meds' });
+  for (const [rxcui, d] of state.drugs) meds.append(el('li', { textContent: `${d.label} — ${qtyLabel(d.qty)}` }));
+  inputs.append(meds);
+  p1.append(inputs);
+
+  const top = data.plans.slice(0, 5);
+  p1.append(el('h2', { className: 'pp-h', textContent: `Top ${top.length} of ${data.planCount} plans, by estimated annual cost` }));
+  for (const p of top) p1.append(buildPassportPlan(p));
+  doc.append(p1);
+
+  // --- Page 2: caveats + share link + QR ---
+  const p2 = el('section', { className: 'pp-page pp-break' });
+  p2.append(el('h2', { className: 'pp-h', textContent: 'Before you decide' }));
+  const caveats = el('ul', { className: 'pp-caveats' });
+  [
+    `Costs are estimates from public CMS files (as of CMS ${meta.quarter || ''}, loaded ${asOf}). Your actual cost can differ with pharmacy, days-supply, deductible status, and coverage phase.`,
+    'Educational tool — not advice, and not an enrollment. PlanRobin does not sell insurance or enroll you in coverage.',
+    'A private website — not affiliated with the federal Medicare program or any insurance company.',
+    'Confirm any plan on Medicare.gov, or by calling 1-800-MEDICARE (1-800-633-4227), before enrolling.',
+    'Free, unbiased help: your State Health Insurance Assistance Program (SHIP) — find a counselor at shiphelp.org.',
+  ].forEach((txt) => caveats.append(el('li', { textContent: txt })));
+  p2.append(caveats);
+
+  updateFragment();
+  const url = location.href;
+  const share = el('div', { className: 'pp-share' });
+  share.append(el('h3', { className: 'pp-h3', textContent: 'Reopen this comparison' }));
+  const cols = el('div', { className: 'pp-share-cols' });
+  const left = el('div', {});
+  left.append(el('p', { className: 'pp-note', textContent: 'Scan the code, or type the link below, to reopen this exact search — it reruns against the newest plan data.' }));
+  left.append(el('p', { className: 'pp-url', textContent: url }));
+  cols.append(left);
+  const qr = buildQR(url);
+  if (qr) cols.append(el('div', { className: 'pp-qr-wrap' }, [qr]));
+  share.append(cols);
+  p2.append(share);
+  doc.append(p2);
+
+  return doc;
 }
 
 function renderDrugRow(rxcui, meta, res) {

@@ -297,17 +297,55 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .hero { padding-top: var(--sp-6); }
 }
 
-/* ---------- print: the proto "Plan Passport" ---------- */
+/* ---------- share bar (screen) ---------- */
+.share-bar { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--accent);
+  border-radius: var(--radius); padding: var(--sp-4) var(--sp-5); margin: 0 0 var(--sp-4); box-shadow: var(--shadow); }
+.share-h { font-size: var(--fs-md); margin: 0 0 var(--sp-3); }
+.share-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.share-btn { min-height: var(--tap); background: var(--accent); color: #fff; border: 0; padding: 0 var(--sp-4);
+  border-radius: var(--radius); font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
+.share-btn:hover { background: var(--accent-2); }
+.share-warn { font-size: var(--fs-sm); color: var(--ink-2); margin: 0 0 var(--sp-2); max-width: 64ch; }
+.share-super { font-size: var(--fs-sm); color: var(--good); font-weight: 600; margin: 0; max-width: 64ch; }
+.restore-note { background: var(--good-tint); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm); color: var(--ink); margin: 0 0 var(--sp-4); }
+
+/* Plan Passport renders only in print */
+#passport { display: none; }
+
+/* ---------- print: Plan Passport (a deliberate ~2-page document) ---------- */
 @media print {
-  :root { --bg: #fff; }
-  body { font-size: 12pt; color: #000; }
-  .site-header, .hero, .trust-strip, .non-affil, #step-county, #step-drugs, .actions,
-  .help-aside, .site-footer, summary, .faq-link, .privacy-note { display: none !important; }
-  .wrap { max-width: 100%; padding: 0; }
-  #results { display: block !important; }
-  .card, .plan, .coverage-summary, .formula, .terms-key { box-shadow: none; border: 1px solid #999; break-inside: avoid; }
-  details.phases[open] .detail { display: table; }
-  details.phases:not([open]) { display: none; }  /* only expanded detail prints */
-  a { color: #000; text-decoration: none; }
-  .plan { page-break-inside: avoid; }
+  @page { size: letter; margin: 0.6in; }
+  html, body { background: #fff; color: #000; font-size: 11pt; }
+  body.printing-passport > *:not(#passport) { display: none !important; }
+  body.printing-passport #passport { display: block !important; }
+
+  .passport-doc { color: #000; }
+  .pp-page { page-break-after: always; }
+  .pp-page:last-child { page-break-after: auto; }
+  .pp-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #000; padding-bottom: 6pt; margin-bottom: 10pt; }
+  .pp-brand { font-size: 15pt; font-weight: 800; }
+  .pp-asof { font-size: 9pt; color: #333; }
+  .pp-h { font-size: 13pt; margin: 12pt 0 6pt; border-bottom: 1px solid #999; padding-bottom: 2pt; }
+  .pp-h3 { font-size: 11pt; margin: 10pt 0 4pt; }
+  .pp-inputs { font-size: 10.5pt; margin-bottom: 6pt; }
+  .pp-meds { margin: 2pt 0 0; padding-left: 16pt; }
+  .pp-meds li { margin: 1pt 0; }
+  .pp-plan { border: 1px solid #999; border-radius: 4pt; padding: 6pt 8pt; margin: 6pt 0; page-break-inside: avoid; }
+  .pp-plan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12pt; }
+  .pp-plan-name { font-weight: 700; font-size: 11pt; }
+  .pp-plan-total { font-weight: 800; font-size: 13pt; white-space: nowrap; }
+  .pp-plan-sub { font-size: 9pt; color: #333; margin: 1pt 0 3pt; }
+  .pp-savings { font-size: 9.5pt; color: #146c3a; margin: 2pt 0; }
+  .pp-drugs { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 3pt; }
+  .pp-drugs td { border-top: 1px solid #ddd; padding: 2pt 4pt; vertical-align: top; }
+  .pp-drugs td:first-child { font-weight: 600; width: 45%; }
+  .pp-drugs td:nth-child(2) { width: 22%; }
+  .pp-caveats { font-size: 10pt; padding-left: 16pt; }
+  .pp-caveats li { margin: 3pt 0; }
+  .pp-share-cols { display: flex; gap: 16pt; align-items: flex-start; }
+  .pp-url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8pt; word-break: break-all; background: #f4f4f4; padding: 4pt; border-radius: 3pt; }
+  .pp-note { font-size: 9.5pt; }
+  .pp-qr-wrap { flex: none; }
+  .pp-qr { width: 1.6in; height: 1.6in; }
 }
