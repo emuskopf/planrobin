@@ -186,7 +186,11 @@ function renderChips() {
     freq.addEventListener('change', () => { const e = state.drugs.get(rxcui); if (e) { e.qty = Number(freq.value); syncResults(); } });
     const btn = el('button', { type: 'button', textContent: '×', title: 'Remove', ariaLabel: 'Remove ' + d.label });
     btn.addEventListener('click', () => removeDrug(rxcui));
-    ul.append(el('li', {}, [el('span', { textContent: d.label }), el('span', { className: 'badge ' + d.kind, textContent: d.kind }), freq, btn]));
+    // Two groups so nothing crushes the name: identity (name + generic/brand badge) wraps freely;
+    // the fixed controls (quantity + remove) sit together and drop below the name on narrow screens.
+    const idWrap = el('div', { className: 'chip-id' }, [el('span', { className: 'chip-name', textContent: d.label }), el('span', { className: 'badge ' + d.kind, textContent: d.kind })]);
+    const controls = el('div', { className: 'chip-controls' }, [freq, btn]);
+    ul.append(el('li', {}, [idWrap, controls]));
   }
 }
 
