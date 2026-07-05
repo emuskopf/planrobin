@@ -24,10 +24,11 @@ async function getPlansForCounty(countyKey, db) {
 
   const pRes = await db.query(
     `select p.contract_id, p.plan_id, p.segment_id, p.plan_name, p.contract_name, p.plan_type,
-            p.snp, p.premium, p.deductible, p.formulary_id, p.ingest_run_id
+            p.snp, p.premium, p.deductible, p.formulary_id, p.ingest_run_id, f.contract_year
        from plans p
        join plan_counties pc
          on pc.contract_id=p.contract_id and pc.plan_id=p.plan_id and pc.segment_id=p.segment_id
+       left join formularies f on f.formulary_id=p.formulary_id
       where pc.ssa_code=$1
       order by p.plan_type, p.contract_id, p.plan_id, p.segment_id`,
     [county.ssa_code]
@@ -39,6 +40,7 @@ async function getPlansForCounty(countyKey, db) {
     premium: r.premium == null ? null : Number(r.premium),
     deductible: r.deductible == null ? null : Number(r.deductible),
     formularyId: r.formulary_id,
+    planYear: parseInt(r.contract_year, 10) || 2026, // drives statutory params ($35 cap, $2,100 OOP)
     starRating: null, // placeholder — star ratings are not in this PUF set
     ingestRunId: r.ingest_run_id,
   }));

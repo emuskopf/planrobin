@@ -293,6 +293,39 @@ npm run dev                           # http://localhost:8788  (serves site + ap
 3. Point the domain at the Pages project. Test Functions locally with
    `npx wrangler pages dev` (uses the real Functions against your `DATABASE_URL`).
 
+### Supabase free tier PAUSES when idle — keep it warm
+The Supabase free tier **pauses a project after ~1 week with no database activity**; the next
+visitor would then hit a cold/sleeping DB (first request errors or stalls while it wakes).
+- **Wake procedure (if it ever pauses):** open the project in the Supabase dashboard and click
+  **Restore/Resume**, or just run any query (the next successful ingest/keep-warm run wakes it).
+- **Prevention (automated):** `.github/workflows/keep-warm.yml` pings a DB-touching endpoint
+  (`/api/meta`, cache-busted) **every 3 days** — well inside the ~1-week window — so the DB
+  never goes idle long enough to pause. No secrets; fails red if the site/DB stops answering.
+
+## Performance & caching
+The results path was an N+1 (a 4-drug × 82-plan search issued **~1,200 DB round trips**). It's now
+a fixed **3 queries** regardless of plans × drugs (`lib/api/results_data.js`):
+1. plans in the county + formulary year + provenance (county CTE, meta lateral),
+2. `drug_tiers` for all `(formulary, rxcui)`,
+3. `tier_costs` + `drug_prices` + `insulin_costs` in one round trip (`UNION ALL` of `jsonb` rows).
+
+Big tables stay on their indexes (`idx_drug_tiers_rxcui`, the `tier_costs`/`drug_prices` PK/lookup
+indexes, `idx_plan_counties_ssa`) — verified with `EXPLAIN ANALYZE`; no sequential scans on large
+tables. Per-request timing is logged as one structured line (`{path, ms, dbMs, queries, cache}`,
+`lib/perf.js`) visible in the Cloudflare dashboard — no third-party analytics.
+
+**What's cached, for how long, and how it busts** (data changes only quarterly, so we cache hard):
+
+| Response | Where | TTL | Bust |
+|---|---|---|---|
+| `POST /api/results` | edge (`caches.default`) | 24h | key includes the **current `ingest_run` id** — a new quarterly ingest changes the id, so every key changes and the cache busts automatically (the run id is itself cached per-colo for 5 min) |
+| `GET /api/counties`, `/api/meta` | browser/edge `Cache-Control` | 24h + 7d stale-while-revalidate | new quarter changes the payload; SWR serves instantly while refreshing |
+| `GET /api/rxnorm/search` | browser/edge `Cache-Control` + per-isolate map | 7d + 7d SWR | drug vocabulary moves slowly |
+
+The results cache is **fail-safe**: if the Cache API is unavailable (e.g. the Node dev server) or
+any step throws, it silently serves the live result. Verify a hit with two identical requests —
+the second returns header `x-cache: HIT` with `queries: 0` in its log line.
+
 ## Trust furniture (built in)
 - Every results view shows **“Data: CMS {quarter} … loaded {date}”**, rendered from
   `ingest_runs` — verified live (`2026-Q1`, loaded July 2 2026).

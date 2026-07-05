@@ -1,13 +1,16 @@
-// GET /api/meta  — data provenance from ingest_runs (never hardcoded).
+// GET /api/meta  — data provenance from ingest_runs (never hardcoded). Quarterly -> cache hard.
 import { metaHandler } from '../../lib/api/handlers.js';
 import { envDb, closeDb, json } from '../../lib/pages.js';
+import { instrument, logRequest } from '../../lib/perf.js';
 
 export async function onRequestGet({ env, waitUntil }) {
+  const t0 = Date.now();
   let db;
   try {
-    db = envDb(env);
+    db = instrument(envDb(env));
     const r = await metaHandler(db);
-    return json(r.status, r.body, { 'cache-control': 'public, max-age=3600', ...(r.headers || {}) });
+    logRequest({ path: '/api/meta', ms: Date.now() - t0, dbMs: db.stats.dbMs, queries: db.stats.queries, status: r.status });
+    return json(r.status, r.body, { 'cache-control': 'public, max-age=86400, stale-while-revalidate=604800', ...(r.headers || {}) });
   } catch (e) {
     return json(500, { error: 'server error', detail: String(e.message) });
   } finally {

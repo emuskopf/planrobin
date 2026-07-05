@@ -1,0 +1,28 @@
+name: perf
+
+# On-demand performance report against LIVE Supabase: table sizes + free-tier %, EXPLAIN, and a
+# smoke test of the batched results path through the SAME driver the Workers runtime uses
+# (postgres.js). Read-only — no writes, no ingest. Manual only.
+on:
+  workflow_dispatch:
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Smoke-test batched path via postgres.js (Workers driver) @ live Supabase
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/perf/smoke_pg.js
+
+      - name: Measure — timing, round trips, EXPLAIN, table sizes, free-tier %
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/perf/measure.js
