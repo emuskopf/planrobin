@@ -288,10 +288,11 @@ const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'Jul
 
 function renderPlan(p) {
   // When a savings line fires, the anchor is the standard-pharmacy figure — say so, so the pair
-  // reads as a matched set. Plans with no savings keep the plain label.
+  // reads as a matched set. Plans with no savings keep the plain label. Whole dollars; the number
+  // equals the breakdown's displayed total (both from PRFormat.planDisplayTotal).
   const baseLbl = p.annualComplete ? 'est. per year' : 'est. per year so far';
   const annual = el('div', { className: 'annual' }, [
-    el('div', { className: 'num' + (p.annualComplete ? '' : ' incomplete'), textContent: money(p.annualEstimate) }),
+    el('div', { className: 'num' + (p.annualComplete ? '' : ' incomplete'), textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) }),
     el('div', { className: 'lbl', textContent: p.savings ? baseLbl + ' at standard pharmacies' : baseLbl }),
   ]);
   const head = el('div', { className: 'plan-head' }, [
@@ -332,8 +333,8 @@ function renderBreakdown(p) {
   };
   const rateOf = (d) => (d && d.headline && d.headline.rate != null) ? Math.round(d.headline.rate * 100) + '%' : 'coinsurance';
 
-  rows.append(line('Premium', money(b.premiumAnnual || 0) + '/yr'));
-  if ((b.copayAnnual || 0) > 0) rows.append(line('Covered drugs (flat copays)', money(b.copayAnnual) + '/yr'));
+  rows.append(line('Premium', PRFormat.dollars(b.premiumAnnual || 0) + '/yr'));
+  if ((b.copayAnnual || 0) > 0) rows.append(line('Covered drugs (flat copays)', PRFormat.dollars(b.copayAnnual) + '/yr'));
 
   // Coinsurance drugs we CAN estimate — shows the dollar estimate + exactly how it was computed,
   // tied to the quantity selector so the reader knows it's their number to adjust.
@@ -342,7 +343,7 @@ function renderBreakdown(p) {
     const r = el('div', { className: 'bd-line bd-coins' });
     const top = el('span', { className: 'bd-coins-top' });
     top.append(el('strong', { textContent: meta.label }));
-    top.append(el('span', { className: 'bd-val', textContent: '≈ ' + money(est.annual || 0) + '/yr' }));
+    top.append(el('span', { className: 'bd-val', textContent: '≈ ' + PRFormat.dollars(est.annual || 0) + '/yr' }));
     r.append(top);
     r.append(el('span', { className: 'bd-note', textContent:
       `${rateOf(d)} coinsurance, estimated from “${qtyLabel(est.quantity)}” at about ${money(est.unitCost || 0)}/unit. Change the quantity on this drug if that isn’t your dose.` }));
@@ -380,11 +381,11 @@ function renderBreakdown(p) {
   // Cap milestone, where it binds.
   if (b.capHit && b.capHit.reached && b.capHit.month) {
     rows.append(el('div', { className: 'bd-line bd-cap' }, [
-      el('span', { className: 'bd-note', textContent: `You’d reach your ${money(b.oopCap)} yearly out-of-pocket cap around ${MONTHS[b.capHit.month]}; covered drugs are $0 after that${b.capBinds ? ', so the total below is less than the lines above add up to' : ''}.` }),
+      el('span', { className: 'bd-note', textContent: `You’d reach your ${PRFormat.dollars(b.oopCap)} yearly out-of-pocket cap around ${MONTHS[b.capHit.month]}; covered drugs are $0 after that${b.capBinds ? ', so the total below is less than the lines above add up to' : ''}.` }),
     ]));
   }
 
-  rows.append(line('Estimated total', money(b.total || 0) + '/yr', 'bd-total'));
+  rows.append(line('Estimated total', PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr', 'bd-total'));
   if (b.hasUnpriceable) {
     rows.append(el('p', { className: 'bd-incomplete', textContent:
       'One or more of your drugs couldn’t be included (no published price) — your true yearly cost is higher.' }));
@@ -405,13 +406,14 @@ function renderSavings(p) {
     preferredMail: "this plan's preferred mail-order pharmacy",
   };
   const loc = LOC[s.channel] || "this plan's preferred pharmacies";
+  const copy = PRFormat.savingsCopy(p, loc); // whole dollars; anchor − amount = the "bringing to" total
   const wrap = el('div', { className: 'savings' });
   const line = el('div', { className: 'savings-line' }, [
     ic('save'),
     el('span', {}, [
       document.createTextNode('Save about '),
-      el('strong', { textContent: '$' + Number(s.displayAmount).toLocaleString() + '/year' }),
-      document.createTextNode(' at ' + loc + ' — about ' + money(s.channelTotal) + '/yr.'),
+      el('strong', { textContent: copy.amount }),
+      document.createTextNode(copy.tail),
     ]),
   ]);
   wrap.append(line);
