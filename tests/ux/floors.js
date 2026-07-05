@@ -69,9 +69,15 @@ function inPageAudit(opts) {
       if (!childOverflows) V.overflow.push({ el: label(el), detail: `content ${el.scrollWidth}px overflows ${el.clientWidth}px box (won't wrap)` });
     }
   }
-  // Fallback: the document is wider than the viewport but nothing above named it.
+  // Fallback: the document is wider than the viewport but the precise rules above didn't name it.
+  // Dump the rightmost elements (ignoring all exclusions) so the culprit is always identifiable.
   if (docOver && V.overflow.length === 0) {
-    V.overflow.push({ el: 'document', detail: `scrollWidth ${document.documentElement.scrollWidth} > clientWidth ${iw}` });
+    const rightmost = [...document.querySelectorAll('body *')]
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter((x) => x.r.width >= 2 && x.r.height >= 2 && x.r.right > iw + 2)
+      .sort((a, b) => b.r.right - a.r.right).slice(0, 3)
+      .map((x) => `${label(x.el)}@${Math.round(x.r.right)}`);
+    V.overflow.push({ el: 'document', detail: `scrollWidth ${document.documentElement.scrollWidth} > clientWidth ${iw} — rightmost: ${rightmost.join(' | ') || 'none (content overflow)'}` });
   }
 
   // ---- Rule 1: no two text-bearing boxes overlap ----
