@@ -152,13 +152,14 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 .suggestions { position: absolute; z-index: 30; left: 0; right: 0; margin: var(--sp-1) 0 0; padding: 0; list-style: none;
   background: var(--surface); border: 1.5px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow);
   max-height: 340px; overflow: auto; }
-.suggestions li { min-height: var(--tap); padding: 10px var(--sp-4); display: flex; align-items: center; gap: var(--sp-3);
+.suggestions li { min-height: var(--tap); padding: 10px var(--sp-4); display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-1) var(--sp-3);
   cursor: pointer; border-bottom: 1px solid var(--line); }
 .suggestions li:last-child { border-bottom: 0; }
 .suggestions li[role=option]:hover, .suggestions li.active { background: var(--accent-tint); }
-/* Long RxNorm names wrap instead of shoving the badge out of the row (same v=16 mechanism). */
-.suggestions li { align-items: flex-start; }
-.suggestions .nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+/* The name keeps a readable minimum width; the badge group yields (wraps to the next line) before
+   the name is ever squeezed below it — min-width:0 prevents overlap but permits crush, this doesn't. */
+.suggestions .nm { flex: 1 1 12ch; min-width: min(12ch, 100%); overflow-wrap: anywhere; }
+.sugg-badges { flex: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: flex-start; }
 .suggestions li.active { outline: 2px solid var(--focus); outline-offset: -2px; }
 .sugg-note { color: var(--ink-2); font-size: var(--fs-sm); cursor: default; }
 .sugg-note.error { color: var(--notcov); }
@@ -177,7 +178,7 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 /* identity = name (+ generic/brand badge); min-width:0 so the name wraps naturally instead of
    crushing to one word per line when the fixed controls refuse to yield (the v=16 mechanism). */
 .chip-id { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; flex: 1 1 auto; }
-.chip-name { min-width: 0; overflow-wrap: anywhere; }
+.chip-name { flex: 1 1 12ch; min-width: min(12ch, 100%); overflow-wrap: anywhere; }
 .chip-controls { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .chips button { flex: none; width: 44px; height: 44px; border: 0; background: #e6e2d8; color: var(--ink); border-radius: 999px;
   cursor: pointer; font-size: 18px; line-height: 1; }
@@ -259,11 +260,12 @@ button.primary:disabled { background: #b7c0c4; color: #eef1f2; cursor: not-allow
 details.breakdown { padding: var(--sp-2) var(--sp-5) var(--sp-3); border-top: 1px solid var(--line); }
 details.breakdown > summary { font-size: var(--fs-sm); }
 .bd-rows { margin-top: var(--sp-2); }
-.bd-line { display: flex; justify-content: space-between; gap: var(--sp-4); align-items: baseline;
+/* label keeps a readable minimum; the (nowrap) value yields to the next line before crushing it */
+.bd-line { display: flex; flex-wrap: wrap; gap: 2px var(--sp-4); align-items: baseline;
   padding: var(--sp-2) 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
 .bd-line:first-child { border-top: 0; }
-.bd-label { color: var(--ink); }
-.bd-val { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.bd-label { color: var(--ink); flex: 1 1 12ch; min-width: min(12ch, 100%); overflow-wrap: anywhere; }
+.bd-val { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; flex: none; margin-left: auto; }
 .bd-note { color: var(--ink-2); font-size: var(--fs-sm); max-width: 60ch; text-align: right; }
 .bd-coins { flex-direction: column; align-items: stretch; gap: 2px; }
 .bd-coins .bd-note { text-align: left; }
@@ -362,8 +364,6 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
      Removes all column competition so nothing can squeeze or overprint on a phone. */
   .drug-row { grid-template-columns: 1fr; }
   .headline { text-align: left; }
-  /* Breakdown rows: let the label wrap; the value stays put (both are flex items, never overlap). */
-  .bd-label { min-width: 0; }
   /* Phase/channel table can be wider than a phone — scroll it instead of crushing the cells. */
   .detail-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   /* Medication chips: one per row, then stack inside — name (+ badge) on top wrapping full width,
@@ -371,6 +371,13 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .chips { flex-direction: column; align-items: stretch; }
   .chips li { flex-direction: column; align-items: stretch; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
   .chip-controls { justify-content: flex-end; }
+  /* Autocomplete rows stack: full-width name on line 1 (wraps naturally), badges beneath on line 2 —
+     a two-badge long name can't crush the name column to a few characters. */
+  .suggestions li { flex-direction: column; align-items: stretch; gap: var(--sp-2); }
+  /* Glossary/definition rows stack to a single column so definitions get the full width, not a
+     sliver next to the term. */
+  .key-dl { grid-template-columns: 1fr; }
+  .key-dl dd { margin: 0 0 var(--sp-2); }
 }
 
 /* ---------- share bar (screen) ---------- */

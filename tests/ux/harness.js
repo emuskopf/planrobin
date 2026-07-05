@@ -11,11 +11,11 @@ const FX = path.join(__dirname, 'fixtures');
 const fx = (name) => JSON.parse(fs.readFileSync(path.join(FX, name), 'utf8'));
 
 // Replay every /api/* the site calls, from committed fixtures. `results` picks the state file.
-async function interceptApis(page, { results = 'results-complete.json' } = {}) {
+async function interceptApis(page, { results = 'results-complete.json', rxnorm = 'rxnorm.json' } = {}) {
   const json = (body) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   await page.route('**/api/counties', (r) => r.fulfill(json(fx('counties.json'))));
   await page.route('**/api/meta', (r) => r.fulfill(json(fx('meta.json'))));
-  await page.route('**/api/rxnorm/search**', (r) => r.fulfill(json(fx('rxnorm.json'))));
+  await page.route('**/api/rxnorm/search**', (r) => r.fulfill(json(fx(rxnorm))));
   await page.route('**/api/zip**', (r) => {
     const zip = new URL(r.request().url()).searchParams.get('zip');
     if (zip === '65041') return r.fulfill(json(fx('zip-multi.json')));
@@ -56,10 +56,10 @@ async function setFontScale(page, scale) {
 }
 
 // ---- run the checkers, return a flat list of {rule, ...} violations ----
-async function collectViolations(page, { rules = ['overlap', 'overflow', 'touch', 'type', 'contrast', 'focus'], overflowExempt = OVERFLOW_EXEMPT } = {}) {
+async function collectViolations(page, { rules = ['overlap', 'overflow', 'touch', 'type', 'readability', 'contrast', 'focus'], overflowExempt = OVERFLOW_EXEMPT } = {}) {
   const out = [];
   const geo = await page.evaluate(inPageAudit, { overflowExempt, bodyCopy: BODY_COPY });
-  for (const key of ['overlap', 'overflow', 'touch', 'type']) {
+  for (const key of ['overlap', 'overflow', 'touch', 'type', 'readability']) {
     if (!rules.includes(key)) continue;
     for (const v of geo[key]) out.push({ rule: key.toUpperCase(), ...v });
   }

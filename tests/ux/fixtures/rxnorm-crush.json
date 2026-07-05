@@ -1,0 +1,38 @@
+{
+ "query": "toprol",
+ "approximatedFrom": null,
+ "results": [
+  {
+   "rxcui": "866414",
+   "name": "24 HR metoprolol succinate 100 MG Extended Release Oral Tablet [Toprol]",
+   "tty": "SBD",
+   "isBrand": true,
+   "kind": "brand",
+   "onFormulary": false
+  },
+  {
+   "rxcui": "866421",
+   "name": "24 HR metoprolol succinate 200 MG Extended Release Oral Tablet [Toprol]",
+   "tty": "SBD",
+   "isBrand": true,
+   "kind": "brand",
+   "onFormulary": false
+  },
+  {
+   "rxcui": "866429",
+   "name": "24 HR metoprolol succinate 25 MG Extended Release Oral Tablet [Toprol]",
+   "tty": "SBD",
+   "isBrand": true,
+   "kind": "brand",
+   "onFormulary": false
+  },
+  {
+   "rxcui": "866438",
+   "name": "24 HR metoprolol succinate 50 MG Extended Release Oral Tablet [Toprol]",
+   "tty": "SBD",
+   "isBrand": true,
+   "kind": "brand",
+   "onFormulary": false
+  }
+ ]
+}

@@ -109,6 +109,12 @@ hand too because a mechanism can reappear in a new component:
 6. **A sibling audit that stops at the component you touched.** When you fix a wrapping/overlap
    mechanism, extend it to *every* component on the same pattern (rows, chips, suggestions,
    confirmation lines, table headers) — not just the one in the screenshot.
+7. **`min-width: 0` prevents overlap but PERMITS crush.** A text column with `min-width: 0` next to
+   fixed-width siblings (badges, a nowrap value, a select) won't overprint — but it can collapse to
+   2–3 characters per line. A column that can't stay readable must **stack** (wrap below whatever
+   squeezed it) and/or keep a **readable minimum** (`flex: 1 1 12ch; min-width: min(12ch, 100%)`) so
+   the siblings yield first. Watch the two-badge cases especially (brand + "not on MO plans").
+   *(v=21 autocomplete/chip crush; glossary + breakdown rows had the same exposure.)*
 
 ---
 
@@ -128,6 +134,9 @@ The suite (`tests/ux/floors.js`) encodes these, matching `site/DESIGN.md`:
   ring; the ring is never removed.
 - **Type floor:** primary **reading prose ≥18px** (site floor is 19); **no text node below 14px**,
   legal lines included. Secondary/meta text may sit at 16px per the DESIGN.md type scale.
+- **Readability:** a real text run (>12 chars) that wraps to 3+ lines must not render below ~8ch wide
+  (≈ <1.5 words/line) when it's crushed to under ~55% of its column — i.e. a sibling squeezed it.
+  Big type filling its full column (a heading in a narrow phone) is not a crush and passes.
 
 Matrix: every page + major state × {360px, 412px} × {default, 200% large-font}.
 
@@ -137,3 +146,8 @@ Matrix: every page + major state × {360px, 412px} × {default, 200% large-font}
 - *2026-07-05* — Standard created from accumulated project rulings (memory + git history) alongside
   the automated UX floor suite. Touch-target rule scoped to controls (links exempt); body-floor
   scoped to primary reading prose (secondary text may be 16px) — both to match `site/DESIGN.md`.
+- *2026-07-05* — Added the **READABILITY** floor + failure pattern #7 after the two-badge Toprol
+  autocomplete crush slipped past the overlap/overflow net (`min-width:0` prevents overlap but permits
+  crush). Fix: suggestions + chips stack on narrow with a 12ch readable minimum; glossary and
+  breakdown rows got the same treatment; off-formulary drugs now carry the "not on MO plans" badge
+  onto the chip too.

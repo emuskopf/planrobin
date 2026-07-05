@@ -16,12 +16,17 @@ const BROKEN = `<!doctype html><html><head><style>
   .lowcontrast{color:#c8c8c8;background:#fff}
   .smallbtn{width:20px;height:20px}
   .nofocus:focus-visible{outline:none;box-shadow:none}
+  /* a text column crushed by a fixed-width sibling — min-width:0 lets it collapse to a sliver */
+  .crushrow{display:flex;width:300px;font-size:19px}
+  .crushname{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+  .crushsib{flex:none;width:268px;background:#ddd}
 </style></head><body>
   <div class="overprint"><span class="a">Aaaa bbbb cccc</span><span class="b">Xxxx yyyy zzzz</span></div>
   <div class="wide">too wide — horizontal overflow</div>
   <p class="tiny">9px legal line below the floor</p>
   <p class="lowcontrast">low contrast body text that axe should flag</p>
   <button class="smallbtn nofocus">x</button>
+  <div class="crushrow"><span class="crushname">metoprolol succinate extended release tablet</span><span class="crushsib">badge</span></div>
 </body></html>`;
 
 test('checkers catch a deliberately-broken page (humane report)', async ({ page }) => {
@@ -39,9 +44,10 @@ test('checkers catch a deliberately-broken page (humane report)', async ({ page 
   expect(rules, report).toContain('OVERFLOW');   // .wide runs off the right edge
   expect(rules, report).toContain('TOUCH');      // 20x20 button < 44px
   expect(rules, report).toContain('TYPE');       // 9px text < 14px floor
-  expect(rules, report).toContain('CONTRAST');   // #c8c8c8 on #fff fails AA
+  expect(rules, report).toContain('CONTRAST');     // #c8c8c8 on #fff fails AA
+  expect(rules, report).toContain('READABILITY');  // name column crushed to a sliver by a fixed sibling
   // report is human-readable: "· [RULE] element — detail"
-  expect(report).toMatch(/\[(OVERFLOW|TOUCH|TYPE|CONTRAST)\]/);
+  expect(report).toMatch(/\[(OVERFLOW|TOUCH|TYPE|CONTRAST|READABILITY)\]/);
 });
 
 test('a clean page produces zero violations', async ({ page }) => {

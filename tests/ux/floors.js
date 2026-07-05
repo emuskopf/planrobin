@@ -28,7 +28,7 @@ const BODY_COPY = ['.lede', '.sub', '.zip-ask', '.story-body p', '.faq-a p'];
 // (no outer references) so Playwright can serialize it into the page.
 function inPageAudit(opts) {
   const { overflowExempt, bodyCopy } = opts;
-  const V = { overlap: [], overflow: [], touch: [], type: [] };
+  const V = { overlap: [], overflow: [], touch: [], type: [], readability: [] };
   const vis = (el) => {
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) === 0) return false;
@@ -133,6 +133,33 @@ function inPageAudit(opts) {
     const fs = parseFloat(getComputedStyle(p).fontSize);
     if (fs < 13.5) V.type.push({ el: label(p), detail: `text ${fs}px (< 14 floor)` });
     else if (bodyEls.has(p) && fs < 17.5) V.type.push({ el: label(p), detail: `body prose ${fs}px (< 18 floor)` });
+  }
+
+  // ---- Rule 7: readability (a text column crushed too narrow to read) ----
+  // The failure `min-width: 0` PERMITS but overlap/overflow don't catch: a real text run (>12 chars)
+  // wraps to 3+ lines in a box under ~8ch wide (equivalently, <1.5 words per rendered line). This is
+  // the two-badge autocomplete/chip crush. `ch` is measured from the element's actual font.
+  const cctx = document.createElement('canvas').getContext('2d');
+  const chOf = (cs) => { cctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; return cctx.measureText('0').width || parseFloat(cs.fontSize) * 0.5; };
+  for (const el of document.querySelectorAll('body *')) {
+    if (!vis(el)) continue;
+    const txt = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim();
+    if (txt.length <= 12) continue; // only real content can be "crushed"
+    if (el.clientWidth < 1) continue; // inline elements have no box width — they flow, can't be "crushed"
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
+    const lines = Math.round(el.getBoundingClientRect().height / lh);
+    if (lines < 3) continue; // must actually wrap tall
+    const widthCh = el.clientWidth / chOf(cs);
+    const wordsPerLine = txt.split(/\s+/).length / lines;
+    // A CRUSH is narrow relative to the space available — a sibling squeezed it. Big type in a
+    // narrow phone (a full-width heading) is NOT a crush: it fills its parent. So require the element
+    // to occupy well under half its parent's width before flagging.
+    const parentW = (el.parentElement && el.parentElement.clientWidth) || el.clientWidth;
+    const squeezed = el.clientWidth < 0.55 * parentW;
+    if (widthCh < 8 && wordsPerLine < 1.5 && squeezed) {
+      V.readability.push({ el: label(el), detail: `${widthCh.toFixed(1)}ch wide across ${lines} lines (${wordsPerLine.toFixed(1)} words/line) — crushed to ${Math.round(100 * el.clientWidth / parentW)}% of its column` });
+    }
   }
   return V;
 }
