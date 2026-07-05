@@ -50,6 +50,7 @@ function computeStats(p) {
       counties: p.counties.length, plans: p.plans.length, plan_counties: p.planCounties.length,
       formularies: p.formularies.length, drug_tiers: p.drugTiers.length, tier_costs: p.tierCosts.length,
       insulin_costs: p.insulinCosts.length, drug_prices: (p.drugPrices || []).length,
+      ssa_fips: (p.ssaFips || []).length, zip_counties: (p.zipCounties || []).length,
     },
     premium_mean: prem.length ? prem.reduce((a, b) => a + b, 0) / prem.length : null,
     premium_median: median(prem),
@@ -120,6 +121,7 @@ async function priceCoverage(db) {
 // Throws on failure (caller decides exit behavior). Does NOT close db.
 async function ingestInto(db, opts = {}) {
   const sourceDir = opts.sourceDir || process.env.SOURCE_DIR || cfg.EXTRACTED;
+  const crosswalkDir = opts.crosswalkDir || process.env.CROSSWALK_DIR || cfg.CROSSWALKS;
   const quarter = opts.quarter || process.env.PUF_QUARTER || cfg.PUF_QUARTER;
   const sourceFile = opts.sourceFile || process.env.PUF_SOURCE_FILE || cfg.PUF_SOURCE_FILE;
   const dlMatch = /_(\d{4})(\d{2})(\d{2})\./.exec(sourceFile);
@@ -142,13 +144,14 @@ async function ingestInto(db, opts = {}) {
 
   try {
     log('Parsing (streaming, MO filter)…');
-    const parsed = await parseMissouri(sourceDir);
+    const parsed = await parseMissouri(sourceDir, { crosswalkDir });
     const stats = computeStats(parsed);
     log('Row counts:', JSON.stringify(stats.row_counts));
 
-    // Checksums + per-file row counts for the audit trail.
+    // Checksums + per-file row counts for the audit trail. Optional components (pricing,
+    // crosswalks) may be absent -> their file path is null; skip those rather than crashing.
     const fileStats = [];
-    for (const [k, f] of Object.entries(parsed.files)) fileStats.push({ role: k, name: path.basename(f), sha256: await sha256File(f) });
+    for (const [k, f] of Object.entries(parsed.files)) { if (f) fileStats.push({ role: k, name: path.basename(f), sha256: await sha256File(f) }); }
 
     // Validation gate vs the prior completed run.
     const priorRes = await db.query(`select row_counts, checks from ingest_runs where status='completed' and scope='MO' order by id desc limit 1`);
@@ -166,9 +169,13 @@ async function ingestInto(db, opts = {}) {
     // Idempotent load: replace all data in one transaction, tagged with this run.
     log('Loading (transactional replace)…');
     await db.query('BEGIN');
-    for (const t of ['drug_prices', 'insulin_costs', 'tier_costs', 'drug_tiers', 'plan_counties', 'counties', 'plans', 'formularies']) await db.query(`delete from ${t}`);
+    for (const t of ['zip_counties', 'ssa_fips', 'drug_prices', 'insulin_costs', 'tier_costs', 'drug_tiers', 'plan_counties', 'counties', 'plans', 'formularies']) await db.query(`delete from ${t}`);
     await bulkInsert(db, 'formularies', ['formulary_id', 'contract_year'], parsed.formularies, runId);
     await bulkInsert(db, 'counties', ['ssa_code', 'fips_code', 'name', 'state', 'pdp_region'], parsed.counties, runId);
+    await bulkInsert(db, 'ssa_fips', ['ssa_code', 'fips_code', 'county_name', 'state'], parsed.ssaFips || [], runId);
+    await bulkInsert(db, 'zip_counties', ['zip', 'county_fips', 'res_ratio'], parsed.zipCounties || [], runId);
+    // Backfill county FIPS from the SSA<->FIPS crosswalk so county_fips lookups + ZIP->county resolution work.
+    await db.query(`update counties c set fips_code = s.fips_code from ssa_fips s where s.ssa_code = c.ssa_code`);
     await bulkInsert(db, 'plans', ['contract_id', 'plan_id', 'segment_id', 'plan_name', 'contract_name', 'plan_type', 'snp', 'premium', 'deductible', 'formulary_id'], parsed.plans, runId);
     await bulkInsert(db, 'plan_counties', ['contract_id', 'plan_id', 'segment_id', 'ssa_code'], parsed.planCounties, runId);
     await bulkInsert(db, 'drug_tiers', ['formulary_id', 'rxcui', 'ndc', 'tier', 'prior_auth', 'step_therapy', 'quantity_limit', 'ql_amount', 'ql_days', 'selected_drug'], parsed.drugTiers, runId);
@@ -183,6 +190,12 @@ async function ingestInto(db, opts = {}) {
     const pc = await priceCoverage(db);
     checks.price_coverage = pc;
     log(`Price coverage (coinsurance NDCs): ${pc.priced}/${pc.total}` + (pc.total ? ` (${(pc.fraction * 100).toFixed(1)}%)` : ''));
+
+    // FIPS coverage: what share of MO counties got a FIPS backfilled from the SSA<->FIPS crosswalk?
+    // Should be ~100% once the crosswalk is loaded; a dip means a county has no crosswalk match.
+    const fc = (await db.query(`select count(*)::int total, count(fips_code)::int with_fips from counties`)).rows[0];
+    checks.fips_coverage = { total: fc.total, with_fips: fc.with_fips, fraction: fc.total ? fc.with_fips / fc.total : null };
+    log(`FIPS coverage (counties backfilled): ${fc.with_fips}/${fc.total}`);
 
     await db.query(`update ingest_runs set status='completed', finished_at=now(), row_counts=$2, file_stats=$3, checks=$4 where id=$1`,
       [runId, stats.row_counts, JSON.stringify(fileStats), JSON.stringify(checks)]);

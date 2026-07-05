@@ -44,6 +44,7 @@ async function main() {
     const url = new URL(req.url, `http://${req.headers.host}`);
     try {
       if (url.pathname === '/api/counties' && req.method === 'GET') return sendJson(res, await H.countiesHandler(db));
+      if (url.pathname === '/api/zip' && req.method === 'GET') return sendJson(res, await H.zipHandler(db, url.searchParams.get('zip')));
       if (url.pathname === '/api/meta' && req.method === 'GET') return sendJson(res, await H.metaHandler(db));
       if (url.pathname === '/api/rxnorm/search' && req.method === 'GET') {
         return sendJson(res, await H.rxnormSearchHandler(url.searchParams.get('q'), { fetch, cache: rxCache, db }));

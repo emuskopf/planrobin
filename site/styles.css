@@ -109,6 +109,33 @@ select, input[type=text] { width: 100%; min-height: var(--tap); padding: 10px va
   font-family: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line-2); border-radius: var(--radius); }
 select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 
+/* ---------- ZIP-first location ---------- */
+.zip-status:not(:empty) { margin-top: var(--sp-3); }
+/* single-county confirmation — a statement, not a question */
+.zip-confirm { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-4); background: var(--good-tint); border: 1px solid var(--good);
+  border-radius: var(--radius); color: var(--ink); }
+.zip-confirm .ic { color: var(--good); display: inline-flex; flex: none; }
+.zip-place { font-weight: 600; }
+.zip-change { min-height: 0; width: auto; margin-left: auto; padding: 6px var(--sp-3); font-size: var(--fs-sm);
+  font-weight: 600; color: var(--accent); background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius-sm); cursor: pointer; }
+.zip-change:hover { border-color: var(--accent); color: var(--accent-2); }
+/* multi-county disambiguation — never a silent guess */
+.zip-ask { font-weight: 600; margin: 0 0 var(--sp-3); }
+.county-choices { display: flex; flex-direction: column; gap: var(--sp-2); }
+.county-choice { width: 100%; min-height: var(--tap); padding: var(--sp-3) var(--sp-4); text-align: left;
+  font-size: var(--fs-base); font-weight: 600; font-family: inherit; color: var(--ink);
+  background: var(--surface); border: 1.5px solid var(--line-2); border-radius: var(--radius); cursor: pointer; }
+.county-choice:hover { border-color: var(--accent); background: var(--accent-tint); }
+/* out-of-area / lookup error */
+.zip-status.warn > p { padding: var(--sp-3) var(--sp-4); margin: 0; background: var(--caution-tint);
+  border: 1px solid var(--caution); border-radius: var(--radius); color: var(--ink); }
+/* the county list is a one-tap fallback, quietly available */
+#county-fallback { margin-top: var(--sp-3); }
+#county-fallback > summary { font-size: var(--fs-sm); font-weight: 600; color: var(--accent); cursor: pointer;
+  padding: var(--sp-2) 0; width: fit-content; }
+#county-fallback > summary:hover { color: var(--accent-2); }
+
 /* privacy reassurance sits AT the medication input */
 .privacy-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: var(--sp-3) 0 var(--sp-4);
   padding: var(--sp-3) var(--sp-4); background: var(--accent-tint); border-radius: var(--radius); font-size: var(--fs-sm); color: var(--ink); }

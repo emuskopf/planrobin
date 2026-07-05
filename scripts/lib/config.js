@@ -7,6 +7,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const DATA = path.join(ROOT, 'data');
 const EXTRACTED = path.join(DATA, 'extracted');
+const CROSSWALKS = path.join(DATA, 'crosswalks'); // committed MO ZIP/SSA/FIPS crosswalks
 const OUT = path.join(ROOT, 'out');
 
 // The quarter/plan-year of the PUF set we extracted. Documented in README.
@@ -47,4 +48,4 @@ const PARAMS = {
   PHARMACY: 'NONPREF', // standard (non-preferred) retail; PREF = preferred retail
 };
 
-module.exports = { ROOT, DATA, EXTRACTED, OUT, PUF_QUARTER, PUF_SOURCE_FILE, FILES, INPUT, OUTFILE, PARAMS };
+module.exports = { ROOT, DATA, EXTRACTED, CROSSWALKS, OUT, PUF_QUARTER, PUF_SOURCE_FILE, FILES, INPUT, OUTFILE, PARAMS };

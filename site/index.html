@@ -6,7 +6,7 @@
   <title>PlanRobin — check your Medicare drug plan, anonymously</title>
   <meta name="description" content="See what your medications really cost on every Medicare drug plan in your county. Free, anonymous, no account. Cost estimates from public CMS data — a private site, not affiliated with the federal Medicare program." />
   <meta name="theme-color" content="#f5f3ee" />
-  <link rel="stylesheet" href="/styles.css?v=16" />
+  <link rel="stylesheet" href="/styles.css?v=17" />
 </head>
 <body>
   <header class="site-header">
@@ -31,13 +31,25 @@
       <p class="non-affil">PlanRobin is a private website — <strong>not affiliated with the federal Medicare program</strong> or any insurance company.</p>
     </section>
 
-    <!-- Step 1: county -->
-    <section class="card" id="step-county">
-      <h2><span class="step" aria-hidden="true">1</span> Pick your county</h2>
-      <label class="field">
-        <span class="label">Missouri county</span>
-        <select id="county" aria-label="Your Missouri county"><option value="">Loading counties…</option></select>
+    <!-- Step 1: location (ZIP-first, county as a fallback) -->
+    <section class="card" id="step-location">
+      <h2><span class="step" aria-hidden="true">1</span> Where do you live?</h2>
+      <label class="field" for="zip">
+        <span class="label">Your ZIP code</span>
+        <input id="zip" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="5"
+               pattern="[0-9]*" placeholder="e.g. 63011" aria-describedby="zip-status"
+               aria-label="Your 5-digit ZIP code" />
       </label>
+      <!-- Confirmation, disambiguation, or an honest not-covered message all render here. -->
+      <div id="zip-status" class="zip-status" aria-live="polite"></div>
+
+      <details id="county-fallback">
+        <summary>or choose your county from a list</summary>
+        <label class="field" for="county">
+          <span class="label">Missouri county</span>
+          <select id="county" aria-label="Your Missouri county"><option value="">Loading counties…</option></select>
+        </label>
+      </details>
     </section>
 
     <!-- Step 2: drugs -->
@@ -63,7 +75,7 @@
 
     <div class="actions">
       <button id="go" class="primary" disabled>See plan costs</button>
-      <span id="go-hint" class="go-hint">Pick a county and at least one medication.</span>
+      <span id="go-hint" class="go-hint">Enter your ZIP (or pick a county) and at least one medication.</span>
     </div>
 
     <!-- Results (loading / results / empty / error / not-found all render here) -->
@@ -97,9 +109,9 @@
     </div>
   </footer>
 
-  <script src="/format.js?v=16"></script>
-  <script src="/share.js?v=16"></script>
-  <script src="/vendor/qrcode.js?v=16"></script>
-  <script src="/app.js?v=16"></script>
+  <script src="/format.js?v=17"></script>
+  <script src="/share.js?v=17"></script>
+  <script src="/vendor/qrcode.js?v=17"></script>
+  <script src="/app.js?v=17"></script>
 </body>
 </html>
