@@ -30,6 +30,11 @@ function findFile(dir, includes, excludes = []) {
   return path.join(dir, hit);
 }
 
+// Like findFile, but returns null instead of throwing when absent (for optional components).
+function findFileOpt(dir, includes, excludes = []) {
+  try { return findFile(dir, includes, excludes); } catch (_) { return null; }
+}
+
 function resolveFiles(dir) {
   return {
     planInfo: findFile(dir, ['plan information'], ['sample']),
@@ -37,6 +42,9 @@ function resolveFiles(dir) {
     beneficiaryCost: findFile(dir, ['beneficiary cost'], ['sample', 'insulin']),
     insulinCost: findFile(dir, ['insulin beneficiary cost'], ['sample']),
     geoLocator: findFile(dir, ['geographic locator'], ['sample']),
+    // Pricing file = per-unit negotiated drug prices. Optional so ingestion still runs if a
+    // source drop lacks it, but production + fixtures include it.
+    pricing: findFileOpt(dir, ['pricing'], ['sample']),
   };
 }
 
@@ -146,7 +154,21 @@ async function parseMissouri(sourceDir) {
     });
   }
 
-  return { files, counties, plans, planCounties, formularies, drugTiers, tierCosts, insulinCosts };
+  // 6) drug_prices for MO plans (per-unit negotiated cost by days-supply). Large file — streamed
+  //    and filtered to MO plans like tier_costs. UNIT_COST is per-unit (e.g. per pill), stored
+  //    as published; days-supply is the real day count (30/60/90).
+  const drugPrices = [];
+  if (files.pricing) {
+    for await (const r of streamRows(files.pricing)) {
+      if (!moPlanKeys.has(`${r.CONTRACT_ID}|${r.PLAN_ID}|${r.SEGMENT_ID}`)) continue;
+      drugPrices.push({
+        contract_id: r.CONTRACT_ID, plan_id: r.PLAN_ID, segment_id: r.SEGMENT_ID,
+        ndc: r.NDC, days_supply: intOrNull(r.DAYS_SUPPLY), unit_cost: numOrNull(r.UNIT_COST),
+      });
+    }
+  }
+
+  return { files, counties, plans, planCounties, formularies, drugTiers, tierCosts, insulinCosts, drugPrices };
 }
 
 module.exports = { parseMissouri, resolveFiles };

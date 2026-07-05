@@ -130,10 +130,43 @@ async function getDrugCosts(rxcuis, planId, db) {
       channelsByDays, insulinByChannelDays: insTierChannel,
     });
 
+    // --- Negotiated per-unit price (Pricing file) for this drug's representative-tier NDCs ---
+    // UNIT_COST is per-unit (e.g. per pill), NOT a per-fill total; we surface it honestly and
+    // never multiply by an assumed quantity. Used to give a coinsurance drug a real price
+    // context; if no NDC has a price, the drug stays on the NOT-FOUND (un-priced) path.
+    const ndcs = [...new Set(rowsForTier.map((r) => r.ndc).filter(Boolean))];
+    let negotiatedPrice = null;
+    if (ndcs.length) {
+      const ph = ndcs.map((_, i) => `$${i + 4}`).join(',');
+      const pr = await db.query(
+        `select ndc, days_supply, unit_cost from drug_prices
+           where contract_id=$1 and plan_id=$2 and segment_id=$3 and ndc in (${ph}) and days_supply in (30,90)`,
+        [contract, plan, segment, ...ndcs]
+      );
+      if (pr.rows.length) {
+        const byDays = {};
+        for (const row of pr.rows) { const d = String(row.days_supply); (byDays[d] = byDays[d] || []).push(Number(row.unit_cost)); }
+        const med = (arr) => { const a = (arr || []).filter((x) => x != null).sort((x, y) => x - y); if (!a.length) return null; const m = Math.floor(a.length / 2); return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+        negotiatedPrice = {
+          unitCostByDays: { 30: med(byDays['30']), 90: med(byDays['90']) },
+          ndcCount: ndcs.length, pricedNdcCount: new Set(pr.rows.map((r) => r.ndc)).size, source: 'pricing_file',
+        };
+      }
+    }
+    // Cost basis for the display: copay drugs (incl. insulin/vaccine after statutory override) show
+    // a real dollar amount; coinsurance drugs can't be dollar-totaled without a dose, so they are
+    // labeled by whether we at least have the plan's negotiated per-unit price.
+    const eff30 = overrideModel.perFill['1'] || (initial && initial['1'] && initial['1'].standardRetail);
+    const effKind = eff30 && eff30.kind;
+    const costBasis = effKind === 'coinsurance'
+      ? (negotiatedPrice ? 'coinsurance_per_unit' : 'coinsurance_no_price')
+      : (effKind === 'copay' ? 'copay' : 'unknown');
+
     drugs.push({
       rxcui: String(rxcui), found: true, tier, tiers, multiTier: tiers.length > 1,
       ndcs: [...new Set(dRes.rows.map((r) => r.ndc))],
       flags, drugTierIngestRunId: dRes.rows[0].ingest_run_id, costsByPhase,
+      negotiatedPrice, costBasis,
       overrides: {
         applied: overrideModel.appliedOverrides,          // rules that fired (empty if none)
         isInsulin: overrideModel.isInsulin, isVaccine: overrideModel.isVaccine,

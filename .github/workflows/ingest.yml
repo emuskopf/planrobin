@@ -58,5 +58,6 @@ jobs:
           PUF_SOURCE_FILE: ${{ github.event.inputs.source_file }}
           FORCE: ${{ github.event.inputs.force }}
           GATE_MAX_DELTA: '0.25'
+          AUTO_MIGRATE: '1'   # apply new migrations (idempotent, IF NOT EXISTS) before loading
         run: node ingest/run.js
         # Exit 1 = failure, exit 3 = validation-gate halt. Either fails the job red.

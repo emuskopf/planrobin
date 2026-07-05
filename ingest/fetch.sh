@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Fetch + extract the quarterly CMS PUF down to the four component .txt files the
-# ingestion needs. Handles the triple-nested zip (outer -> SPUF_YYYY.zip -> component
-# .zips -> .txt) and skips the huge pharmacy-network / pricing files we don't load.
+# Fetch + extract the quarterly CMS PUF down to the component .txt files the ingestion
+# needs. Handles the triple-nested zip (outer -> SPUF_YYYY.zip -> component .zips -> .txt)
+# and skips the huge pharmacy-network file we don't load. The pricing file (per-unit drug
+# prices, used to price coinsurance drugs honestly) IS extracted — large, but needed.
 #
 # Usage:
 #   ingest/fetch.sh <SOURCE> <DEST_DIR>
@@ -14,7 +15,8 @@ set -euo pipefail
 SOURCE="${1:?usage: fetch.sh <url-or-zip> <dest-dir>}"
 DEST="${2:?usage: fetch.sh <url-or-zip> <dest-dir>}"
 # 'beneficiary cost' matches both the standard AND the insulin beneficiary cost file.
-WANT='plan information|basic drugs formulary|beneficiary cost|geographic locator'
+# 'pricing' matches the per-unit drug Pricing file (not the pharmacy-network file).
+WANT='plan information|basic drugs formulary|beneficiary cost|geographic locator|pricing'
 
 mkdir -p "$DEST"
 TMP="$(mktemp -d)"
@@ -53,4 +55,5 @@ done < <(find "$COMP" -iname '*.zip')
 
 echo "Extracted component files: $found"
 ls -1 "$DEST"/*.txt
-[ "$found" -ge 5 ] || { echo "ERROR: expected >=5 component files, got $found"; exit 1; }
+# Expect 6: plan info, basic formulary, beneficiary cost (standard + insulin), geo locator, pricing.
+[ "$found" -ge 6 ] || { echo "ERROR: expected >=6 component files (incl. pricing), got $found"; exit 1; }

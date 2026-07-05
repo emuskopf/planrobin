@@ -49,7 +49,7 @@ function computeStats(p) {
     row_counts: {
       counties: p.counties.length, plans: p.plans.length, plan_counties: p.planCounties.length,
       formularies: p.formularies.length, drug_tiers: p.drugTiers.length, tier_costs: p.tierCosts.length,
-      insulin_costs: p.insulinCosts.length,
+      insulin_costs: p.insulinCosts.length, drug_prices: (p.drugPrices || []).length,
     },
     premium_mean: prem.length ? prem.reduce((a, b) => a + b, 0) / prem.length : null,
     premium_median: median(prem),
@@ -95,6 +95,28 @@ async function bulkInsert(db, table, columns, rows, runId) {
 }
 
 // Core ingestion against an already-open, migrated db. Returns { runId, status, stats }.
+// Pricing honesty metric: of the MO (plan, NDC) pairs whose tier is COINSURANCE at initial
+// coverage / standard retail, how many have a real per-unit price in the Pricing file (30-day)?
+async function priceCoverage(db) {
+  const r = await db.query(`
+    with coins as (
+      select distinct p.contract_id, p.plan_id, p.segment_id, dt.ndc
+        from plans p
+        join drug_tiers dt on dt.formulary_id = p.formulary_id
+        join tier_costs tc on tc.contract_id = p.contract_id and tc.plan_id = p.plan_id
+             and tc.segment_id = p.segment_id and tc.tier = dt.tier
+             and tc.coverage_level = 1 and tc.days_supply = 1 and tc.cost_type_nonpref = 2
+    ),
+    priced as (
+      select c.* from coins c
+        join drug_prices dp on dp.contract_id = c.contract_id and dp.plan_id = c.plan_id
+             and dp.segment_id = c.segment_id and dp.ndc = c.ndc and dp.days_supply = 30
+    )
+    select (select count(*) from coins)::int total, (select count(*) from priced)::int priced`);
+  const { total, priced } = r.rows[0];
+  return { total, priced, fraction: total ? priced / total : null };
+}
+
 // Throws on failure (caller decides exit behavior). Does NOT close db.
 async function ingestInto(db, opts = {}) {
   const sourceDir = opts.sourceDir || process.env.SOURCE_DIR || cfg.EXTRACTED;
@@ -144,7 +166,7 @@ async function ingestInto(db, opts = {}) {
     // Idempotent load: replace all data in one transaction, tagged with this run.
     log('Loading (transactional replace)…');
     await db.query('BEGIN');
-    for (const t of ['insulin_costs', 'tier_costs', 'drug_tiers', 'plan_counties', 'counties', 'plans', 'formularies']) await db.query(`delete from ${t}`);
+    for (const t of ['drug_prices', 'insulin_costs', 'tier_costs', 'drug_tiers', 'plan_counties', 'counties', 'plans', 'formularies']) await db.query(`delete from ${t}`);
     await bulkInsert(db, 'formularies', ['formulary_id', 'contract_year'], parsed.formularies, runId);
     await bulkInsert(db, 'counties', ['ssa_code', 'fips_code', 'name', 'state', 'pdp_region'], parsed.counties, runId);
     await bulkInsert(db, 'plans', ['contract_id', 'plan_id', 'segment_id', 'plan_name', 'contract_name', 'plan_type', 'snp', 'premium', 'deductible', 'formulary_id'], parsed.plans, runId);
@@ -152,7 +174,15 @@ async function ingestInto(db, opts = {}) {
     await bulkInsert(db, 'drug_tiers', ['formulary_id', 'rxcui', 'ndc', 'tier', 'prior_auth', 'step_therapy', 'quantity_limit', 'ql_amount', 'ql_days', 'selected_drug'], parsed.drugTiers, runId);
     await bulkInsert(db, 'tier_costs', ['contract_id', 'plan_id', 'segment_id', 'coverage_level', 'tier', 'days_supply', 'cost_type_pref', 'cost_amt_pref', 'cost_type_nonpref', 'cost_amt_nonpref', 'cost_type_mail_pref', 'cost_amt_mail_pref', 'cost_type_mail_nonpref', 'cost_amt_mail_nonpref', 'tier_specialty', 'ded_applies'], parsed.tierCosts, runId);
     await bulkInsert(db, 'insulin_costs', ['contract_id', 'plan_id', 'segment_id', 'tier', 'days_supply', 'copay_pref', 'copay_nonpref', 'copay_mail_pref', 'copay_mail_nonpref', 'coin_pref', 'coin_nonpref', 'coin_mail_pref', 'coin_mail_nonpref'], parsed.insulinCosts, runId);
+    await bulkInsert(db, 'drug_prices', ['contract_id', 'plan_id', 'segment_id', 'ndc', 'days_supply', 'unit_cost'], parsed.drugPrices || [], runId);
     await db.query('COMMIT');
+
+    // Price coverage: of the MO (plan, drug NDC) pairs that are COINSURANCE (initial coverage,
+    // standard retail), how many gained a real per-unit price? This is the honesty metric for the
+    // pricing file — we surface prices only where the file actually has them.
+    const pc = await priceCoverage(db);
+    checks.price_coverage = pc;
+    log(`Price coverage (coinsurance NDCs): ${pc.priced}/${pc.total}` + (pc.total ? ` (${(pc.fraction * 100).toFixed(1)}%)` : ''));
 
     await db.query(`update ingest_runs set status='completed', finished_at=now(), row_counts=$2, file_stats=$3, checks=$4 where id=$1`,
       [runId, stats.row_counts, JSON.stringify(fileStats), JSON.stringify(checks)]);

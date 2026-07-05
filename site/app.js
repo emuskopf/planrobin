@@ -34,7 +34,7 @@ const TERMS = {
   'preferred-retail': 'Specific pharmacies the plan picks as lower-cost.',
   'preferred-mail': 'The plan’s mail-order pharmacy — often the cheapest, especially for 90-day fills.',
   'preferred-pharmacy': 'A pharmacy this plan has negotiated lower copays with. Most big chains are “preferred” on some plans and “standard” on others — it depends on the plan, not just the pharmacy.',
-  'days-supply': 'How many days each fill covers. A 90-day fill is often cheaper per month.',
+  'days-supply': 'How many days each fill covers. At a regular pharmacy a 90-day fill usually costs 3× the 30-day copay — the real 90-day savings come from mail order.',
   // Plan types
   'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare.',
   'pdp': 'A stand-alone Prescription Drug Plan you add on to Original Medicare.',
@@ -275,10 +275,12 @@ function renderKey() {
 
 const planTypeSlug = (label) => (label && label.startsWith('PDP')) ? 'pdp' : 'ma-pd';
 
+const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 function renderPlan(p) {
   const annual = el('div', { className: 'annual' }, [
-    el('div', { className: 'num' + (p.annualComplete ? '' : ' incomplete'), textContent: money(p.annualEstimate) + (p.annualComplete ? '' : '+') }),
-    el('div', { className: 'lbl', textContent: p.annualComplete ? 'est. per year' : 'est. per year (excludes coinsurance)' }),
+    el('div', { className: 'num' + (p.annualComplete ? '' : ' incomplete'), textContent: money(p.annualEstimate) }),
+    el('div', { className: 'lbl', textContent: p.annualComplete ? 'est. per year' : 'est. per year so far' }),
   ]);
   const head = el('div', { className: 'plan-head' }, [
     el('div', {}, [
@@ -296,8 +298,67 @@ function renderPlan(p) {
   const card = el('div', { className: 'plan' }, [head]);
   const sav = renderSavings(p);
   if (sav) card.append(sav);
+  card.append(renderBreakdown(p));
   for (const [rxcui, meta] of state.drugs) card.append(renderDrugRow(rxcui, meta, p.drugs[rxcui]));
   return card;
+}
+
+// Itemized, plain-English breakdown of exactly what's in (and out of) the headline number.
+// The headline is the SUM of what we can honestly total (premium + flat copays). Coinsurance
+// drugs (no dose -> no honest annual total) and not-covered drugs are shown here by name,
+// never folded into the number as a fake $0.
+function renderBreakdown(p) {
+  const b = p.breakdown || {};
+  const wrap = el('details', { className: 'breakdown' });
+  wrap.append(el('summary', { textContent: 'See what’s included in this total' }));
+  const rows = el('div', { className: 'bd-rows' });
+  const line = (label, value, cls) => {
+    const r = el('div', { className: 'bd-line' + (cls ? ' ' + cls : '') });
+    r.append(el('span', { className: 'bd-label', textContent: label }));
+    r.append(el('span', { className: 'bd-val', textContent: value }));
+    return r;
+  };
+  rows.append(line('Premium', money(b.premiumAnnual || 0) + '/yr'));
+  rows.append(line('Covered drugs (flat copays)', money(b.copayAnnual || 0) + '/yr'));
+
+  // Coinsurance drugs — shown with the plan's real per-unit price, never a fabricated total.
+  for (const rxcui of (b.coinsuranceRxcuis || [])) {
+    const d = p.drugs[rxcui] || {}, meta = state.drugs.get(rxcui) || { label: rxcui };
+    const rate = d.headline && d.headline.rate != null ? Math.round(d.headline.rate * 100) + '%' : 'coinsurance';
+    const np = d.negotiatedPrice;
+    const detail = (np && np.unitCostByDays && np.unitCostByDays['30'] != null)
+      ? `${rate} coinsurance on a drug the plan prices at about ${money(np.unitCostByDays['30'])}/unit — your yearly cost depends on your dose, so it isn’t in the total above.`
+      : `${rate} coinsurance — this plan’s negotiated price for it isn’t in the data, so we can’t include it in the total.`;
+    const r = el('div', { className: 'bd-line bd-coins' });
+    r.append(el('span', { className: 'bd-label' }, [el('strong', { textContent: meta.label })]));
+    r.append(el('span', { className: 'bd-note', textContent: detail }));
+    rows.append(r);
+  }
+
+  // Not on the formulary — loud, by name, "you'd pay full price", never a fake $0.
+  for (const rxcui of (b.notCoveredRxcuis || [])) {
+    const meta = state.drugs.get(rxcui) || { label: rxcui };
+    const r = el('div', { className: 'bd-line bd-notcov' });
+    const lab = el('span', { className: 'bd-label' }); lab.append(ic('cross'), el('strong', { textContent: ' ' + meta.label }));
+    r.append(lab);
+    r.append(el('span', { className: 'bd-note', textContent: 'Not on this plan’s formulary — you’d pay full price. Not included in the total.' }));
+    rows.append(r);
+  }
+
+  // Cap milestone, where it binds.
+  if (b.capHit && b.capHit.reached && b.capHit.month) {
+    rows.append(el('div', { className: 'bd-line bd-cap' }, [
+      el('span', { className: 'bd-note', textContent: `You’d reach your ${money(b.oopCap)} yearly out-of-pocket cap around ${MONTHS[b.capHit.month]}; covered drugs are $0 after that.` }),
+    ]));
+  }
+
+  rows.append(line('Estimated total', money(b.total || 0) + '/yr', 'bd-total'));
+  if (!p.annualComplete) {
+    rows.append(el('p', { className: 'bd-incomplete', textContent:
+      'One or more of your drugs couldn’t be included in this total (see above) — your true yearly cost is higher.' }));
+  }
+  wrap.append(rows);
+  return wrap;
 }
 
 // A calm, information-only savings line: if the SAME plan is cheaper through a preferred
@@ -356,7 +417,10 @@ function renderDrugRow(rxcui, meta, res) {
     right.append(el('span', { className: 'annual-drug', textContent: ` · ${money(res.headline.dollars * 12)}/yr` }));
   } else {
     right.append(el('span', { className: 'amt', textContent: res.headline.display }));
-    right.append(el('span', { className: 'annual-drug', textContent: ' · not annualized' }));
+    // Coinsurance: show the plan's real negotiated per-unit price where the file has it (honest,
+    // per-unit — never multiplied by an assumed dose), else say the price is absent.
+    const up = res.negotiatedPrice && res.negotiatedPrice.unitCostByDays && res.negotiatedPrice.unitCostByDays['30'];
+    right.append(el('span', { className: 'annual-drug', textContent: up != null ? ` · of ~${money(up)}/unit · yearly cost depends on your dose` : ' · plan’s price not in data' }));
   }
   // Trust feature: when federal law sets the price, say so plainly ("capped by federal law").
   const rule = (res.appliedOverrides || [])[0];

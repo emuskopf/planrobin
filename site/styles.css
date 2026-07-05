@@ -192,6 +192,29 @@ button.primary:disabled { background: #b7c0c4; color: #eef1f2; cursor: not-allow
 .savings-more summary { min-height: 0; font-size: var(--fs-fine); color: var(--accent); }
 .savings-more p { font-size: var(--fs-sm); color: var(--ink-2); margin: var(--sp-2) 0 0; max-width: 62ch; }
 
+/* itemized cost breakdown — plain-English "what's in this number" */
+details.breakdown { padding: var(--sp-2) var(--sp-5) var(--sp-3); border-top: 1px solid var(--line); }
+details.breakdown > summary { font-size: var(--fs-sm); }
+.bd-rows { margin-top: var(--sp-2); }
+.bd-line { display: flex; justify-content: space-between; gap: var(--sp-4); align-items: baseline;
+  padding: var(--sp-2) 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+.bd-line:first-child { border-top: 0; }
+.bd-label { color: var(--ink); }
+.bd-val { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.bd-note { color: var(--ink-2); font-size: var(--fs-sm); max-width: 60ch; text-align: right; }
+.bd-coins { flex-direction: column; align-items: stretch; gap: 2px; }
+.bd-coins .bd-note { text-align: left; }
+.bd-notcov { flex-direction: column; align-items: stretch; gap: 2px; }
+.bd-notcov .bd-label { display: inline-flex; align-items: center; gap: 6px; color: var(--notcov); font-weight: 700; }
+.bd-notcov .bd-note { text-align: left; }
+.bd-notcov .ic { color: var(--notcov); }
+.bd-cap .bd-note { text-align: left; color: var(--accent); }
+.bd-total { border-top: 2px solid var(--line-2); margin-top: var(--sp-1); padding-top: var(--sp-3); }
+.bd-total .bd-label { font-weight: 700; }
+.bd-total .bd-val { font-size: var(--fs-md); }
+.bd-incomplete { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3); background: var(--surface-2);
+  border-radius: var(--radius-sm); color: var(--ink-2); font-size: var(--fs-sm); }
+
 /* drug rows */
 .drug-row { display: grid; grid-template-columns: 1fr auto; gap: var(--sp-2) var(--sp-4); align-items: baseline;
   padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line); }
