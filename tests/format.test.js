@@ -88,4 +88,23 @@ t('planRank: within the partial group, covering MORE drugs beats a cheaper-but-e
   assert.strictEqual([covers0, covers1].sort(F.planRank)[0], covers1); // the $0 empty plan must not lead
 });
 
+console.log('\nCMS plan ID for display (segment suffix only to disambiguate):');
+t('planDisplayId shows contract-plan; adds segment ONLY when the id is ambiguous in the results', () => {
+  // Two plans share contract-plan H2228-042 but differ by segment -> both need the suffix.
+  const a = { planId: 'H2228-042', segmentId: '001' };
+  const b = { planId: 'H2228-042', segmentId: '002' };
+  const c = { planId: 'S5678-042', segmentId: '000' }; // unique contract-plan
+  const ambig = F.ambiguousPlanIds([a, b, c]);
+  assert.deepStrictEqual([...ambig], ['H2228-042']);
+  assert.strictEqual(F.planDisplayId(a, ambig), 'H2228-042-001');
+  assert.strictEqual(F.planDisplayId(b, ambig), 'H2228-042-002');
+  assert.strictEqual(F.planDisplayId(c, ambig), 'S5678-042'); // unique -> no noise suffix
+});
+t('planDisplayId is the bare contract-plan when nothing collides', () => {
+  const plans = [{ planId: 'H4461-046', segmentId: '000' }, { planId: 'S1234-001', segmentId: '000' }];
+  const ambig = F.ambiguousPlanIds(plans);
+  assert.strictEqual(F.planDisplayId(plans[0], ambig), 'H4461-046'); // matches the DB key format
+  assert.strictEqual(ambig.size, 0);
+});
+
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

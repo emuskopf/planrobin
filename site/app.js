@@ -38,6 +38,7 @@ const TERMS = {
   // Plan types
   'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare.',
   'pdp': 'A stand-alone Prescription Drug Plan you add on to Original Medicare.',
+  'plan-id': 'This is the plan’s official Medicare ID — it’s printed on the plan’s membership card, and it’s the surest way to confirm you’re looking at the right plan on Medicare.gov, with 1-800-MEDICARE, or with a SHIP counselor.',
   // Costs
   'premium': 'The fixed monthly amount you pay to have the plan, no matter how many drugs you take.',
   'deductible': 'What you pay out of pocket for drugs each year before the plan starts sharing the cost.',
@@ -349,6 +350,11 @@ function renderSkeleton(box) {
 }
 
 function money(n) { return '$' + Number(n).toFixed(2); }
+// The CMS plan ID as shown to the user — segment suffix added only to disambiguate within the
+// current results (shared definition in PRFormat, so screen + Passport read identically).
+function displayPlanId(p) {
+  return PRFormat.planDisplayId(p, PRFormat.ambiguousPlanIds((state.lastData && state.lastData.plans) || []));
+}
 
 function renderResults(data) {
   state.lastData = data;
@@ -459,6 +465,8 @@ function renderPlan(p) {
       el('div', { className: 'plan-name', textContent: p.planName }),
       el('div', { className: 'plan-sub' }, [
         el('span', { className: 'term', title: TERMS[planTypeSlug(p.planType)], textContent: p.planType }),
+        document.createTextNode(' · '),
+        el('span', { className: 'term plan-id', title: TERMS['plan-id'], textContent: displayPlanId(p) }),
         document.createTextNode(' · '),
         el('span', { className: 'term', title: TERMS.premium, textContent: `premium ${money(p.premium || 0)}/mo` }),
         document.createTextNode(' · '),
@@ -697,7 +705,8 @@ function buildPassportPlan(p) {
     el('div', { className: 'pp-plan-name', textContent: p.planName }),
     el('div', { className: 'pp-plan-total' + (cov.covered === 0 ? ' pp-no-cover' : ''), textContent: totalText }),
   ]));
-  card.append(el('div', { className: 'pp-plan-sub', textContent: `${p.planType} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}` }));
+  // The CMS plan ID prints with each plan so a counselor/sibling can look it up independently.
+  card.append(el('div', { className: 'pp-plan-sub', textContent: `${p.planType} · ${displayPlanId(p)} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}` }));
   if (!cov.complete && cov.covered > 0) {
     const names = cov.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
     card.append(el('div', { className: 'pp-partial', textContent: `Doesn't cover: ${names} — full price out of pocket, and not counted toward the ${PRFormat.dollars(p.oopCap || 2100)} cap.` }));
