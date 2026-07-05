@@ -62,6 +62,12 @@ t('planCoverage: complete vs partial, with missing drugs named', () => {
   assert.strictEqual(c.complete, false);
   assert.strictEqual(c.covered, 1);
   assert.deepStrictEqual(c.missing, ['2']);
+  // Zero coverage (incl. every single-drug miss): covered 0, all drugs missing — drives the
+  // "no dollar anchor, show the badge" UI branch.
+  const none1 = F.planCoverage({ drugs: { '1': { covered: false } } });
+  assert.strictEqual(none1.covered, 0); assert.strictEqual(none1.total, 1); assert.strictEqual(none1.complete, false);
+  const none2 = F.planCoverage({ drugs: { '1': { covered: false }, '2': { covered: false } } });
+  assert.strictEqual(none2.covered, 0); assert.strictEqual(none2.total, 2);
 });
 
 t('planRank: a $0 partial plan NEVER outranks a complete plan', () => {

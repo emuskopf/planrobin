@@ -194,6 +194,10 @@ button.primary:disabled { background: #b7c0c4; color: #eef1f2; cursor: not-allow
 .no-complete-note .ic { color: var(--notcov); flex: none; margin-top: 2px; }
 .plan.plan-partial { border-left: 4px solid var(--notcov); }
 .annual .num.partial { color: var(--ink-2); }
+/* zero-coverage: no dollar anchor — the not-covered badge treatment (icon + words, sentence case) */
+.no-cover-anchor { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end;
+  color: var(--notcov); font-weight: 700; font-size: var(--fs-sm); max-width: 22ch; text-align: right; }
+.no-cover-anchor .ic { flex: none; }
 .partial-flag { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3) var(--sp-5);
   border-top: 1px solid var(--line); background: #fbecec; font-size: var(--fs-sm); color: var(--ink); }
 .partial-flag .ic { color: var(--notcov); flex: none; margin-top: 2px; }
@@ -352,6 +356,7 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-plan-total { font-weight: 800; font-size: 13pt; white-space: nowrap; }
   .pp-plan-sub { font-size: 9pt; color: #333; margin: 1pt 0 3pt; }
   .pp-plan.pp-plan-partial { border-left: 3pt solid #b00020; }
+  .pp-plan-total.pp-no-cover { font-size: 9.5pt; font-weight: 700; color: #b00020; }
   .pp-partial { font-size: 9pt; color: #b00020; font-weight: 600; margin: 2pt 0; }
   .pp-savings { font-size: 9.5pt; color: #146c3a; margin: 2pt 0; }
   .pp-drugs { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 3pt; }

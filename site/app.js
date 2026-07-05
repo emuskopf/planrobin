@@ -263,14 +263,16 @@ function renderResults(data) {
   const complete = data.plans.filter((p) => p.notCovered === 0);
   const partial = data.plans.filter((p) => p.notCovered > 0);
   if (complete.length === 0) {
-    box.append(el('div', { className: 'no-complete-note' }, [
-      ic('cross'),
-      el('span', { textContent: `No plan in ${data.county.name} covers all ${state.drugs.size} of these medications. Every plan below is missing at least one — each shows which.` }),
-    ]));
+    const n = state.drugs.size;
+    const noteMsg = n === 1
+      ? `No plan in ${data.county.name} covers your medication — every plan below is missing it.`
+      : `No plan in ${data.county.name} covers all ${n} of these medications. Every plan below is missing at least one — each shows which.`;
+    box.append(el('div', { className: 'no-complete-note' }, [ic('cross'), el('span', { textContent: noteMsg })]));
   }
   for (const p of complete) box.append(renderPlan(p));
   if (partial.length) {
-    box.append(el('div', { className: 'partial-divider', textContent: 'These plans don’t cover all of your medications' }));
+    // Divider only when there are complete plans above to divide from (else the note above says it).
+    if (complete.length > 0) box.append(el('div', { className: 'partial-divider', textContent: 'These plans don’t cover all of your medications' }));
     for (const p of partial) box.append(renderPlan(p));
   }
 }
@@ -321,10 +323,16 @@ const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'Jul
 function renderPlan(p) {
   const cov = PRFormat.planCoverage(p);
   // Anchor. Complete plans: whole-dollar total + "est. per year" (with the standard-pharmacy
-  // qualifier when a savings line fires). Partial plans: the total is for the covered drugs only,
-  // so it's labeled that way — never a bare "$0 est. per year" that hides missing coverage.
+  // qualifier when a savings line fires). Partial plans (some covered): total for the covered drugs
+  // only, labeled that way — never a bare "$0". Zero-coverage plans: NO dollar figure at all (a
+  // yearly estimate for a plan covering nothing you take is meaningless) — just the not-covered badge.
   let annual;
-  if (!cov.complete) {
+  if (cov.covered === 0) {
+    const msg = cov.total === 1 ? 'Doesn’t cover your medication' : 'Doesn’t cover any of your medications';
+    annual = el('div', { className: 'annual' }, [
+      el('div', { className: 'no-cover-anchor' }, [ic('cross'), el('span', { textContent: msg })]),
+    ]);
+  } else if (!cov.complete) {
     annual = el('div', { className: 'annual' }, [
       el('div', { className: 'num partial', textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) }),
       el('div', { className: 'lbl', textContent: `est. per year · covers ${cov.covered} of your ${cov.total} meds` }),
@@ -350,8 +358,9 @@ function renderPlan(p) {
     annual,
   ]);
   const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') }, [head]);
-  // Loud partial-coverage flag — names the missing drug(s), never silent.
-  if (!cov.complete) {
+  // Loud partial-coverage flag — names the missing drug(s). Only for plans covering SOME of your
+  // drugs; a zero-coverage plan already says so in its anchor (and every drug row below is "not covered").
+  if (!cov.complete && cov.covered > 0) {
     const names = cov.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
     const flag = el('div', { className: 'partial-flag' });
     flag.append(ic('cross'), el('span', { textContent: `Doesn’t cover: ${names} — you’d pay full price out of pocket, and it wouldn’t count toward the plan’s ${PRFormat.dollars(p.oopCap || 2100)} cap.` }));
@@ -571,12 +580,15 @@ function buildQR(text) {
 function buildPassportPlan(p) {
   const cov = PRFormat.planCoverage(p);
   const card = el('div', { className: 'pp-plan' + (cov.complete ? '' : ' pp-plan-partial') });
+  const totalText = cov.covered === 0
+    ? (cov.total === 1 ? 'Doesn’t cover your medication' : 'Doesn’t cover any of your medications')
+    : PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (cov.complete ? (p.annualComplete ? '' : ' so far') : ` · for ${cov.covered} of ${cov.total}`);
   card.append(el('div', { className: 'pp-plan-head' }, [
     el('div', { className: 'pp-plan-name', textContent: p.planName }),
-    el('div', { className: 'pp-plan-total', textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (cov.complete ? (p.annualComplete ? '' : ' so far') : ` · for ${cov.covered} of ${cov.total}`) }),
+    el('div', { className: 'pp-plan-total' + (cov.covered === 0 ? ' pp-no-cover' : ''), textContent: totalText }),
   ]));
   card.append(el('div', { className: 'pp-plan-sub', textContent: `${p.planType} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}` }));
-  if (!cov.complete) {
+  if (!cov.complete && cov.covered > 0) {
     const names = cov.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
     card.append(el('div', { className: 'pp-partial', textContent: `Doesn't cover: ${names} — full price out of pocket, and not counted toward the ${PRFormat.dollars(p.oopCap || 2100)} cap.` }));
   }
