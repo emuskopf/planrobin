@@ -387,16 +387,23 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
      sliver next to the term. */
   .key-dl { grid-template-columns: 1fr; }
   .key-dl dd { margin: 0 0 var(--sp-2); }
+  /* Print assumes a configured printer most phones lack — drop it on mobile; the PDF prints anywhere. */
+  .pp-print-btn { display: none; }
 }
 
 /* ---------- share bar (screen) ---------- */
 .share-bar { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--accent);
   border-radius: var(--radius); padding: var(--sp-4) var(--sp-5); margin: 0 0 var(--sp-4); box-shadow: var(--shadow); }
-.share-h { font-size: var(--fs-md); margin: 0 0 var(--sp-3); }
+.share-h { font-size: var(--fs-md); margin: 0 0 var(--sp-1); }
+.share-lead { color: var(--ink-2); font-size: var(--fs-sm); margin: 0 0 var(--sp-3); max-width: 64ch; }
 .share-actions { display: flex; flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-3); }
-.share-btn { min-height: var(--tap); background: var(--accent); color: #fff; border: 0; padding: 0 var(--sp-4);
+.share-btn { min-height: var(--tap); background: var(--accent); color: #fff; border: 1.5px solid var(--accent); padding: 0 var(--sp-4);
   border-radius: var(--radius); font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
-.share-btn:hover { background: var(--accent-2); }
+.share-btn:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.share-btn:disabled { opacity: 0.6; cursor: progress; }
+/* secondary actions read as quieter (outline), so the file (Download/Share) is clearly primary */
+.share-secondary { background: var(--surface); color: var(--accent); border-color: var(--line-2); }
+.share-secondary:hover { background: var(--surface); color: var(--accent-2); border-color: var(--accent); }
 .share-warn { font-size: var(--fs-sm); color: var(--ink-2); margin: 0 0 var(--sp-2); max-width: 64ch; }
 .share-super { font-size: var(--fs-sm); color: var(--good); font-weight: 600; margin: 0; max-width: 64ch; }
 .restore-note { background: var(--good-tint); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3);

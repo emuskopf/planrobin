@@ -648,32 +648,90 @@ async function maybeRestoreFromHash() {
   }
 }
 
+// Build the PDF and either download it or hand it to the native share sheet. The FILE is the
+// artifact — it needs no configured printer (most of our audience's phones have none).
+// pdf-lib is ~525KB — load it (self-hosted, no CDN) only when the user actually wants a file, so the
+// results page stays fast.
+let _pdfLibPromise = null;
+function loadPdfLib() {
+  if (window.PDFLib) return Promise.resolve();
+  if (!_pdfLibPromise) _pdfLibPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script'); s.src = '/vendor/pdf-lib.min.js';
+    s.onload = () => resolve(); s.onerror = () => reject(new Error('pdf-lib load failed'));
+    document.head.append(s);
+  });
+  return _pdfLibPromise;
+}
+
+async function runPdf(btn, mode) {
+  const data = state.lastData; if (!data) return;
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    await loadPdfLib();
+    const { blob, filename } = await renderPassportPdf(passportModelNow(data));
+    if (mode === 'share') {
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: 'PlanRobin drug plan comparison', text: 'My Medicare drug plan comparison from PlanRobin.' }); } catch (_) { /* user cancelled */ }
+        return;
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: filename }); document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (_) {
+    alert('Sorry — couldn’t build the PDF just now. You can still copy the link or (on a computer) print.');
+  } finally { btn.textContent = orig; btn.disabled = false; }
+}
+
+// Print: build the passport SYNCHRONOUSLY before printing so the preview is never blank (Android
+// Chrome fires `beforeprint` unreliably — see the mobile-print fix). Desktop path.
+function printPassport() {
+  const data = state.lastData; if (!data) return;
+  const host = ensurePassportHost(); host.innerHTML = ''; host.append(buildPassport(data));
+  document.body.classList.add('printing-passport');
+  window.print();
+  setTimeout(() => document.body.classList.remove('printing-passport'), 1000); // belt-and-suspenders vs missing afterprint
+}
+
 function renderShareBar(data) {
   const bar = el('div', { className: 'share-bar' });
-  bar.append(el('h3', { className: 'share-h', textContent: 'Save or share this search' }));
+  bar.append(el('h3', { className: 'share-h', textContent: 'Save or share this comparison' }));
+  bar.append(el('p', { className: 'share-lead', textContent: 'Save it, print it anywhere, or send it to someone helping you.' }));
   const actions = el('div', { className: 'share-actions' });
 
-  const copyBtn = el('button', { type: 'button', className: 'share-btn', textContent: 'Copy link' });
+  // Primary: the downloadable file (works with no printer configured).
+  const dl = el('button', { type: 'button', className: 'share-btn share-primary', textContent: 'Download PDF' });
+  dl.addEventListener('click', () => runPdf(dl, 'download'));
+  actions.append(dl);
+
+  // Share the FILE via the native sheet where supported (text it to your sister). Feature-detect
+  // file sharing with a dummy PDF so it only appears where it actually works (most mobile).
+  let canShareFiles = false;
+  try { canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [new File(['%PDF-1.4'], 'x.pdf', { type: 'application/pdf' })] })); } catch (_) {}
+  if (canShareFiles) {
+    const sh = el('button', { type: 'button', className: 'share-btn share-primary', textContent: 'Share' });
+    sh.addEventListener('click', () => runPdf(sh, 'share'));
+    actions.append(sh);
+  }
+
+  // Print stays for wide viewports (it works well there); hidden on phones via CSS — the PDF prints
+  // from anywhere later.
+  const pr = el('button', { type: 'button', className: 'share-btn share-secondary pp-print-btn', textContent: 'Print' });
+  pr.addEventListener('click', printPassport);
+  actions.append(pr);
+
+  const copyBtn = el('button', { type: 'button', className: 'share-btn share-secondary', textContent: 'Copy link' });
   copyBtn.addEventListener('click', async () => {
     updateFragment();
     try { await navigator.clipboard.writeText(location.href); copyBtn.textContent = 'Link copied ✓'; setTimeout(() => { copyBtn.textContent = 'Copy link'; }, 2000); }
     catch (_) { window.prompt('Copy this link:', location.href); }
   });
   actions.append(copyBtn);
-
-  if (navigator.share) {
-    const shareBtn = el('button', { type: 'button', className: 'share-btn', textContent: 'Share' });
-    shareBtn.addEventListener('click', async () => { updateFragment(); try { await navigator.share({ title: 'PlanRobin drug plan comparison', url: location.href }); } catch (_) {} });
-    actions.append(shareBtn);
-  }
-
-  const printBtn = el('button', { type: 'button', className: 'share-btn', textContent: 'Print this comparison' });
-  printBtn.addEventListener('click', () => window.print());
-  actions.append(printBtn);
   bar.append(actions);
 
-  bar.append(el('p', { className: 'share-warn', textContent: 'This link contains your medication list. Anyone you send it to can see it — share only with people you trust.' }));
-  bar.append(el('p', { className: 'share-super', textContent: 'Bookmark it and reopen it this fall — it reruns against the newest plan data automatically.' }));
+  bar.append(el('p', { className: 'share-warn', textContent: 'The link and the PDF contain your medication list — share only with people you trust.' }));
+  bar.append(el('p', { className: 'share-super', textContent: 'Bookmark the link and reopen it this fall — it reruns against the newest plan data automatically.' }));
   return bar;
 }
 
@@ -702,114 +760,129 @@ function buildQR(text) {
   } catch (_) { return null; } // the URL is printed as text regardless
 }
 
-function buildPassportPlan(p) {
-  const cov = PRFormat.planCoverage(p);
-  const card = el('div', { className: 'pp-plan' + (cov.complete ? '' : ' pp-plan-partial') });
-  const totalText = cov.covered === 0
-    ? (cov.total === 1 ? 'Doesn’t cover your medication' : 'Doesn’t cover any of your medications')
-    : PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (cov.complete ? (p.annualComplete ? '' : ' so far') : ` · for ${cov.covered} of ${cov.total}`);
+// Build the shared model from current state (URL fragment kept fresh for the share link).
+function passportModelNow(data) {
+  updateFragment();
+  return PRPassport.passportModel(data, [...state.drugs], { shareUrl: location.href });
+}
+
+// ---- DOM renderer: walks the shared model into the 2-page print passport (.pp-* classes) ----
+function planCardDom(it) {
+  const card = el('div', { className: 'pp-plan' + (it.partialFlag ? ' pp-plan-partial' : '') });
   card.append(el('div', { className: 'pp-plan-head' }, [
-    el('div', { className: 'pp-plan-name', textContent: p.planName }),
-    el('div', { className: 'pp-plan-total' + (cov.covered === 0 ? ' pp-no-cover' : ''), textContent: totalText }),
+    el('div', { className: 'pp-plan-name', textContent: it.name }),
+    el('div', { className: 'pp-plan-total' + (it.noCover ? ' pp-no-cover' : ''), textContent: it.total }),
   ]));
-  // The CMS plan ID prints with each plan so a counselor/sibling can look it up independently.
-  card.append(el('div', { className: 'pp-plan-sub', textContent: `${p.planType} · ${displayPlanId(p)} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}` }));
-  if (!cov.complete && cov.covered > 0) {
-    const names = cov.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
-    card.append(el('div', { className: 'pp-partial', textContent: `Doesn't cover: ${names} — full price out of pocket, and not counted toward the ${PRFormat.dollars(p.oopCap || 2100)} cap.` }));
-  }
-  if (p.savings) {
-    const c = PRFormat.savingsCopy(p, SAVINGS_LOC[p.savings.channel] || "this plan's preferred pharmacies");
-    card.append(el('div', { className: 'pp-savings', textContent: 'Save about ' + c.amount + c.tail }));
-  }
+  card.append(el('div', { className: 'pp-plan-sub', textContent: it.sub }));
+  if (it.partial) card.append(el('div', { className: 'pp-partial', textContent: it.partial }));
+  if (it.savings) card.append(el('div', { className: 'pp-savings', textContent: it.savings }));
   const tbl = el('table', { className: 'pp-drugs' });
-  for (const [rxcui, meta] of state.drugs) {
-    const res = p.drugs[rxcui];
-    let tier = '', cost;
-    if (!res || !res.covered) { cost = 'Not covered — you’d pay full price'; }
-    else {
-      const fl = [res.flags.priorAuth && 'PA', res.flags.stepTherapy && 'ST', res.flags.quantityLimit && 'QL'].filter(Boolean).join(' ');
-      tier = 'Tier ' + res.tier + (fl ? ' ' + fl : '');
-      if (res.headline.kind === 'copay') cost = money(res.headline.dollars) + '/fill';
-      else if (res.estimated) cost = res.headline.display + ' ≈ ' + PRFormat.dollars(res.estimated.annual) + '/yr';
-      else cost = res.headline.display;
-      const rule = (res.appliedOverrides || [])[0];
-      if (rule && LAW_BADGE[rule.rule]) cost += ' — ' + LAW_BADGE[rule.rule];
-    }
-    tbl.append(el('tr', {}, [el('td', { textContent: meta.label }), el('td', { textContent: tier }), el('td', { textContent: cost })]));
-  }
+  for (const [label, tier, cost] of it.drugs) tbl.append(el('tr', {}, [el('td', { textContent: label }), el('td', { textContent: tier }), el('td', { textContent: cost })]));
   card.append(tbl);
   return card;
 }
 
-function buildPassport(data) {
-  const meta = data.meta || {};
-  const asOf = meta.ingestedAt ? new Date(meta.ingestedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'unknown date';
+function renderPassportDom(model) {
   const doc = el('div', { className: 'passport-doc' });
+  let page = el('section', { className: 'pp-page' }); doc.append(page);
+  let brand = '', asof = '';
+  const flushHead = () => { if (brand || asof) { page.insertBefore(el('div', { className: 'pp-head' }, [el('div', { className: 'pp-brand', textContent: brand }), el('div', { className: 'pp-asof', textContent: asof })]), page.firstChild); brand = asof = ''; } };
+  const inputs = () => { let d = page.querySelector('.pp-inputs'); if (!d) { d = el('div', { className: 'pp-inputs' }); page.append(d); } return d; };
+  const listIn = (host, cls) => { let ul = host.querySelector('.' + cls); if (!ul) { ul = el('ul', { className: cls }); host.append(ul); } return ul; };
 
-  // --- Page 1: inputs + top plans ---
-  const p1 = el('section', { className: 'pp-page' });
-  p1.append(el('div', { className: 'pp-head' }, [
-    el('div', { className: 'pp-brand', textContent: 'PlanRobin — Medicare drug plan comparison' }),
-    el('div', { className: 'pp-asof', textContent: `Data: CMS ${meta.quarter || ''}, loaded ${asOf}` }),
-  ]));
-  const inputs = el('div', { className: 'pp-inputs' });
-  inputs.append(el('div', {}, [el('strong', { textContent: 'County: ' }), document.createTextNode(`${data.county.name}, ${data.county.state}`)]));
-  inputs.append(el('div', {}, [el('strong', { textContent: 'Medications (30-day fills): ' })]));
-  const meds = el('ul', { className: 'pp-meds' });
-  for (const [rxcui, d] of state.drugs) meds.append(el('li', { textContent: `${d.label} — ${qtyLabel(d.qty)}` }));
-  inputs.append(meds);
-  p1.append(inputs);
-
-  // Rank among plans that cover ALL the drugs. A cheaper-looking plan that skips one of your
-  // medications would leave you paying full price for it, so it isn't shown as a "top" plan —
-  // this is the same ranking the on-screen results use, made explicit so the numbers aren't a
-  // surprise next to the $0 partial-coverage plans lower in the list.
-  // Top plans come from the COMPLETE group; only if fewer than 3 cover everything do partial
-  // plans appear (each with its own flag), so the passport never leads with a plan that silently
-  // skips a drug. Same coverage definition as the on-screen results (PRFormat.planCoverage).
-  const complete = data.plans.filter((p) => p.notCovered === 0);
-  const partial = data.plans.filter((p) => p.notCovered > 0);
-  const top = (complete.length >= 3 ? complete : [...complete, ...partial]).slice(0, 5);
-  const nDrugs = state.drugs.size;
-  p1.append(el('div', { className: 'pp-coverage', textContent: complete.length
-    ? `${complete.length} of ${data.planCount} plans cover ${nDrugs === 1 ? 'your medication' : `all ${nDrugs} of your medications`}. The plans below are ranked by yearly cost among those. A plan that skips one of your drugs would leave you paying full price for it, so it isn’t shown as a top plan even if it looks cheaper.`
-    : `No plan in ${data.county.name} covers every medication on your list. The plans below cover the most, ranked by yearly cost; each plan flags what it misses.` }));
-  p1.append(el('h2', { className: 'pp-h', textContent: complete.length
-    ? `Top ${top.length} plans that cover all your medications, by yearly cost`
-    : `Top ${top.length} plans by coverage, then yearly cost` }));
-  for (const p of top) p1.append(buildPassportPlan(p));
-  doc.append(p1);
-
-  // --- Page 2: caveats + share link + QR ---
-  const p2 = el('section', { className: 'pp-page pp-break' });
-  p2.append(el('h2', { className: 'pp-h', textContent: 'Before you decide' }));
-  const caveats = el('ul', { className: 'pp-caveats' });
-  [
-    `Costs are estimates from public CMS files (as of CMS ${meta.quarter || ''}, loaded ${asOf}). Your actual cost can differ with pharmacy, days-supply, deductible status, and coverage phase.`,
-    'Educational tool — not advice, and not an enrollment. PlanRobin does not sell insurance or enroll you in coverage.',
-    'A private website — not affiliated with the federal Medicare program or any insurance company.',
-    'Confirm any plan on Medicare.gov, or by calling 1-800-MEDICARE (1-800-633-4227), before enrolling.',
-    'Free, unbiased help: your State Health Insurance Assistance Program (SHIP) — find a counselor at shiphelp.org.',
-  ].forEach((txt) => caveats.append(el('li', { textContent: txt })));
-  p2.append(caveats);
-
-  updateFragment();
-  const url = location.href;
-  const share = el('div', { className: 'pp-share' });
-  share.append(el('h3', { className: 'pp-h3', textContent: 'Reopen this comparison' }));
-  const cols = el('div', { className: 'pp-share-cols' });
-  const left = el('div', {});
-  left.append(el('p', { className: 'pp-note', textContent: 'Scan the code, or type the link below, to reopen this exact search — it reruns against the newest plan data.' }));
-  left.append(el('p', { className: 'pp-url', textContent: url }));
-  cols.append(left);
-  const qr = buildQR(url);
-  if (qr) cols.append(el('div', { className: 'pp-qr-wrap' }, [qr]));
-  share.append(cols);
-  p2.append(share);
-  doc.append(p2);
-
+  for (const it of model.items) {
+    if (it.pageBreak) { flushHead(); page = el('section', { className: 'pp-page pp-break' }); doc.append(page); }
+    if (it.type === 'brand') brand = it.text;
+    else if (it.type === 'asof') asof = it.text;
+    else if (it.type === 'kv') { const idx = it.text.indexOf(': '); inputs().append(el('div', {}, [el('strong', { textContent: it.text.slice(0, idx + 2) }), document.createTextNode(it.text.slice(idx + 2))])); }
+    else if (it.type === 'label') inputs().append(el('div', {}, el('strong', { textContent: it.text })));
+    else if (it.type === 'med') listIn(inputs(), 'pp-meds').append(el('li', { textContent: it.text }));
+    else if (it.type === 'coverage') page.append(el('div', { className: 'pp-coverage', textContent: it.text }));
+    else if (it.type === 'h') page.append(el('h2', { className: 'pp-h', textContent: it.text }));
+    else if (it.type === 'plan') page.append(planCardDom(it));
+    else if (it.type === 'caveat') listIn(page, 'pp-caveats').append(el('li', { textContent: it.text }));
+    else if (it.type === 'h3') { const sh = el('div', { className: 'pp-share' }); sh.append(el('h3', { className: 'pp-h3', textContent: it.text })); const cols = el('div', { className: 'pp-share-cols' }); const left = el('div', {}); cols.append(left); sh.append(cols); page.append(sh); page._share = { cols, left }; }
+    else if (it.type === 'note') page._share.left.append(el('p', { className: 'pp-note', textContent: it.text }));
+    else if (it.type === 'url') page._share.left.append(el('p', { className: 'pp-url', textContent: it.text }));
+    else if (it.type === 'qr') { const q = buildQR(it.url); if (q) page._share.cols.append(el('div', { className: 'pp-qr-wrap' }, [q])); }
+  }
+  flushHead();
   return doc;
+}
+
+function buildPassport(data) { return renderPassportDom(passportModelNow(data)); }
+
+// ---- PDF renderer: same model → a text-based (selectable), self-hosted PDF. Records every string it
+// draws so a test can prove PDF text == print-DOM text == the model. ----
+async function renderPassportPdf(model) {
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const W = 612, H = 792, M = 54, maxW = W - 2 * M;
+  const c = { ink: rgb(0.11, 0.15, 0.2), gray: rgb(0.3, 0.3, 0.32), green: rgb(0.08, 0.42, 0.23), red: rgb(0.69, 0, 0.13), line: rgb(0.8, 0.79, 0.75) };
+  let page = pdf.addPage([W, H]); let y = H - M;
+  const drawn = [];
+
+  const wrap = (str, f, size, width) => { const words = String(str).split(/\s+/); const out = []; let cur = ''; for (const w of words) { const t = cur ? cur + ' ' + w : w; if (f.widthOfTextAtSize(t, size) <= width || !cur) cur = t; else { out.push(cur); cur = w; } } if (cur) out.push(cur); return out; };
+  const need = (h) => { if (y - h < M) { page = pdf.addPage([W, H]); y = H - M; } };
+  const rule = () => { need(8); y -= 6; page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.75, color: c.line }); y -= 4; };
+  // draw one text block (wrapped), recording the LOGICAL string; `record:false` to skip parity list.
+  const text = (str, o = {}) => {
+    if (str == null || str === '') return;
+    if (o.record !== false) drawn.push(String(str));
+    const f = o.bold ? bold : font, size = o.size || 10.5, x = M + (o.indent || 0), width = maxW - (o.indent || 0);
+    const lh = size * 1.32;
+    for (const ln of wrap((o.prefix || '') + str, f, size, width)) { need(lh); y -= lh; page.drawText(ln, { x, y: y + lh * 0.24, size, font: f, color: o.color || c.ink }); }
+    y -= (o.gap != null ? o.gap : 3);
+  };
+  const drugRow = (cells) => {
+    const size = 9.5, lh = size * 1.28;
+    const cols = [{ x: M, w: maxW * 0.44 }, { x: M + maxW * 0.45, w: maxW * 0.2 }, { x: M + maxW * 0.66, w: maxW * 0.34 }];
+    const wc = cells.map((cell, i) => wrap(String(cell || ''), font, size, cols[i].w));
+    const rows = Math.max(1, ...wc.map((w) => w.length));
+    need(rows * lh + 2);
+    for (let i = 0; i < 3; i++) if (cells[i]) drawn.push(String(cells[i]));
+    const top = y;
+    for (let i = 0; i < 3; i++) { let yy = top; for (const ln of wc[i]) { yy -= lh; page.drawText(ln, { x: cols[i].x, y: yy + lh * 0.24, size, font: i === 0 ? bold : font, color: c.ink }); } }
+    y = top - rows * lh - 2;
+  };
+  const drawQR = (url) => {
+    let qr; try { qr = (typeof qrcode !== 'undefined') && qrcode(0, 'L'); if (!qr) return; qr.addData(url); qr.make(); } catch { return; }
+    const n = qr.getModuleCount(), box = 120, cell = box / n; need(box + 8); y -= box;
+    page.drawRectangle({ x: M, y, width: box, height: box, color: rgb(1, 1, 1) });
+    for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (qr.isDark(r, col)) page.drawRectangle({ x: M + col * cell, y: y + box - (r + 1) * cell, width: cell, height: cell, color: rgb(0, 0, 0) });
+    y -= 8;
+  };
+
+  for (const it of model.items) {
+    if (it.pageBreak) { page = pdf.addPage([W, H]); y = H - M; }
+    if (it.type === 'brand') text(it.text, { bold: true, size: 16, gap: 2 });
+    else if (it.type === 'asof') { text(it.text, { size: 9, color: c.gray, gap: 2 }); rule(); }
+    else if (it.type === 'kv') text(it.text, { size: 10.5 });
+    else if (it.type === 'label') text(it.text, { bold: true, size: 10.5, gap: 1 });
+    else if (it.type === 'med') text(it.text, { size: 10.5, indent: 12, prefix: '•  ', gap: 1 });
+    else if (it.type === 'coverage') { y -= 3; text(it.text, { size: 9.5, color: c.gray }); }
+    else if (it.type === 'h') { y -= 4; text(it.text, { bold: true, size: 14 }); rule(); }
+    else if (it.type === 'plan') {
+      text(it.name, { bold: true, size: 12, gap: 1 });
+      text(it.total, { bold: true, size: 12, color: it.noCover ? c.red : c.ink, gap: 1 });
+      text(it.sub, { size: 9, color: c.gray });
+      if (it.partial) text(it.partial, { size: 9, color: c.red });
+      if (it.savings) text(it.savings, { size: 9.5, color: c.green });
+      for (const row of it.drugs) drugRow(row);
+      rule();
+    }
+    else if (it.type === 'caveat') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
+    else if (it.type === 'h3') { y -= 4; text(it.text, { bold: true, size: 12 }); }
+    else if (it.type === 'note') text(it.text, { size: 9.5 });
+    else if (it.type === 'url') text(it.text, { size: 8, color: c.gray });
+    else if (it.type === 'qr') drawQR(it.url);
+  }
+  // useObjectStreams:false keeps the font dict + text operators in plain bytes — selectable text,
+  // broad viewer compatibility, and still only a few KB.
+  const bytes = await pdf.save({ useObjectStreams: false });
+  return { blob: new Blob([bytes], { type: 'application/pdf' }), bytes, drawn, filename: model.filename };
 }
 
 function renderDrugRow(rxcui, meta, res) {
