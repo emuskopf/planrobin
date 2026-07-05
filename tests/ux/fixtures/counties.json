@@ -1,0 +1,25 @@
+{
+ "state": "MO",
+ "counties": [
+  {
+   "code": "26490",
+   "name": "Jefferson",
+   "state": "Missouri"
+  },
+  {
+   "code": "26910",
+   "name": "St. Charles",
+   "state": "Missouri"
+  },
+  {
+   "code": "26940",
+   "name": "St. Louis",
+   "state": "Missouri"
+  },
+  {
+   "code": "26950",
+   "name": "St. Louis City",
+   "state": "Missouri"
+  }
+ ]
+}

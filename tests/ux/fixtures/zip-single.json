@@ -1,0 +1,14 @@
+{
+ "status": "ok",
+ "zip": "63011",
+ "multi": false,
+ "counties": [
+  {
+   "code": "26940",
+   "name": "St. Louis",
+   "state": "Missouri",
+   "fips": "29189",
+   "resRatio": 1
+  }
+ ]
+}

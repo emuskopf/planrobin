@@ -52,7 +52,8 @@ body {
 }
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--sp-5); }
 
-h1, h2, h3, h4 { line-height: var(--lh-tight); color: var(--ink); margin: 0 0 var(--sp-3); font-weight: 700; }
+/* break long words at large font/zoom so a heading never overflows the column (200% breaks nothing) */
+h1, h2, h3, h4 { line-height: var(--lh-tight); color: var(--ink); margin: 0 0 var(--sp-3); font-weight: 700; overflow-wrap: break-word; }
 h1 { font-size: var(--fs-xl); letter-spacing: -0.01em; }
 h2 { font-size: var(--fs-lg); }
 h3 { font-size: var(--fs-md); }
@@ -70,7 +71,8 @@ a:focus-visible { outline-offset: 3px; }
 
 /* ---------- header ---------- */
 .site-header { background: var(--surface); border-bottom: 1px solid var(--line); }
-.site-header .wrap { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 60px; padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
+/* wrap (not overflow) when large font/zoom makes brand + beta wider than the screen */
+.site-header .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); min-height: 60px; padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
 .brand { font-weight: 800; font-size: var(--fs-md); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: var(--sp-2); }
 .brand:hover { color: var(--ink); }
 .beta { font-size: var(--fs-fine); color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
@@ -117,7 +119,7 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
   border-radius: var(--radius); color: var(--ink); }
 .zip-confirm .ic { color: var(--good); display: inline-flex; flex: none; }
 .zip-place { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-.zip-change { min-height: 0; width: auto; margin-left: auto; padding: 6px var(--sp-3); font-size: var(--fs-sm);
+.zip-change { min-height: 44px; width: auto; margin-left: auto; padding: 6px var(--sp-3); font-size: var(--fs-sm);
   font-weight: 600; color: var(--accent); background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius-sm); cursor: pointer; }
 .zip-change:hover { border-color: var(--accent); color: var(--accent-2); }
 /* multi-county disambiguation — never a silent guess */
@@ -173,11 +175,11 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 .chip-id { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; flex: 1 1 auto; }
 .chip-name { min-width: 0; overflow-wrap: anywhere; }
 .chip-controls { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
-.chips button { flex: none; width: 32px; height: 32px; border: 0; background: #e6e2d8; color: var(--ink); border-radius: 999px;
+.chips button { flex: none; width: 44px; height: 44px; border: 0; background: #e6e2d8; color: var(--ink); border-radius: 999px;
   cursor: pointer; font-size: 18px; line-height: 1; }
 .chips button:hover { background: var(--line-2); }
 /* per-drug frequency (drives coinsurance $ estimate) — compact, inside the chip */
-.chips .qty { width: auto; min-height: 30px; padding: 2px var(--sp-2); font-size: var(--fs-fine);
+.chips .qty { width: auto; min-height: 44px; padding: 2px var(--sp-3); font-size: var(--fs-fine);
   border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface); color: var(--ink-2); }
 
 /* ---------- actions ---------- */
@@ -318,9 +320,10 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
 .terms-key { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-3) var(--sp-4); margin: 0 0 var(--sp-5); box-shadow: var(--shadow); }
 .terms-key > summary { color: var(--accent); font-weight: 700; }
 .key-h { margin: var(--sp-3) 0 2px; font-size: var(--fs-sm); }
-.key-dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px var(--sp-4); margin: 2px 0 var(--sp-3); font-size: var(--fs-sm); }
-.key-dl dt { font-weight: 700; }
-.key-dl dd { margin: 0; color: var(--ink-2); }
+/* minmax(0,…) tracks + min-width:0 so terms/definitions wrap instead of overflowing at large font */
+.key-dl { display: grid; grid-template-columns: minmax(0, max-content) 1fr; gap: 2px var(--sp-4); margin: 2px 0 var(--sp-3); font-size: var(--fs-sm); }
+.key-dl dt { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.key-dl dd { margin: 0; color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 
 /* SHIP counselor help card near results */
 .help-aside { background: var(--accent-tint); border: 1px solid #cfe0e5; border-radius: var(--radius); padding: var(--sp-4) var(--sp-5); margin: var(--sp-5) 0 0; font-size: var(--fs-sm); }

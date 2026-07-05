@@ -20,11 +20,17 @@
     "dev": "node dev/server.js",
     "build-overrides": "node tools/overrides/build-classification.js",
     "build-crosswalks": "node scripts/build_crosswalks.js",
-    "test": "node tests/format.test.js && node tests/share.test.js && node tests/overrides.test.js && node tests/channels.test.js && node tests/pricing.test.js && node tests/zip.test.js && node tests/acceptance.test.js"
+    "test": "node tests/format.test.js && node tests/share.test.js && node tests/overrides.test.js && node tests/channels.test.js && node tests/pricing.test.js && node tests/zip.test.js && node tests/acceptance.test.js",
+    "test:ux": "playwright test tests/ux",
+    "test:ux:fixtures": "node tests/ux/build-fixtures.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
     "pg": "^8.22.0",
     "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1"
   }
 }

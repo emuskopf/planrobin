@@ -25,6 +25,11 @@
 node_modules/
 npm-debug.log*
 
+# Playwright / UX floor suite artifacts (the suite + its fixtures ARE tracked)
+/test-results/
+/playwright-report/
+/tests/ux/report/
+
 # OS
 .DS_Store
 Thumbs.db
