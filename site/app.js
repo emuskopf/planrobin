@@ -855,18 +855,28 @@ function renderDrugRow(rxcui, meta, res) {
   }
 
   const row = el('div', { className: 'drug-row' }, [left, right]);
-  row.append(renderPhases(res.phases));
+  row.append(renderPhases(res));
   return row;
 }
 
-function renderPhases(phases) {
+function renderPhases(res) {
+  const phases = res.phases;
   const det = el('details', { className: 'phases' });
   det.append(el('summary', { textContent: 'Other phases & pharmacy channels' }));
 
-  // Plain-English intro so the table isn't a wall of Medicare jargon.
+  // Plain-English intro so the detail isn't a wall of Medicare jargon.
   det.append(el('p', { className: 'phase-intro', textContent:
     'Your cost for this drug changes during the year and by where you fill it. The number above is the everyday case — a 30-day fill at a standard pharmacy during initial coverage. Here’s the rest.' }));
 
+  // The default: pattern-collapsed plain-English lines (a 6-column grid can't survive a phone). On
+  // narrow screens THESE ARE the interface — the full grid below is hidden (see styles.css).
+  const s = PRFormat.phaseSummary(phases, { deductibleExempt: res.deductibleApplies === false });
+  const sum = el('ul', { className: 'phase-summary' });
+  for (const line of s.lines) sum.append(el('li', {}, line));
+  det.append(sum);
+  if (s.footnote) det.append(el('p', { className: 'phase-foot', textContent: s.footnote }));
+
+  // The full table stays available behind a toggle — on wide screens / print, where it fits.
   const th = (text, slug) => el('th', { textContent: text, title: TERMS[slug] || '' });
   const t = el('table', { className: 'detail' });
   t.append(el('thead', {}, el('tr', {}, [
@@ -886,7 +896,11 @@ function renderPhases(phases) {
       ]));
     }
   }
-  t.append(tb); det.append(el('div', { className: 'detail-scroll' }, [t])); // scrolls on narrow screens
+  t.append(tb);
+  const full = el('details', { className: 'full-table' });
+  full.append(el('summary', { textContent: 'See the full table' }));
+  full.append(el('div', { className: 'detail-scroll' }, [t]));
+  det.append(full);
 
   // Short definitions + a link to the fuller FAQ article.
   const legend = el('div', { className: 'phase-legend' });

@@ -107,4 +107,66 @@ t('planDisplayId is the bare contract-plan when nothing collides', () => {
   assert.strictEqual(ambig.size, 0);
 });
 
+console.log('\nPhase/channel summary (pattern-collapsed plain lines replace the crushed grid):');
+const copay = (d) => ({ kind: 'copay', dollars: d, rate: null });
+const coins = (r) => ({ kind: 'coinsurance', dollars: null, rate: r });
+const none = () => ({ kind: 'not_offered', dollars: null, rate: null });
+// Build a phases object from { lvl: { '1': {chan:cell}, '2': {chan:cell} } }.
+const ph = (spec) => { const o = {}; for (const lvl of Object.keys(spec)) { o[lvl] = { byDaysSupply: {} }; for (const ds of Object.keys(spec[lvl])) o[lvl].byDaysSupply[ds] = spec[lvl][ds]; } return o; };
+
+t('worked example (the screenshot plan): equal phases, $0 preferred, 3× footnote → 3 lines', () => {
+  const std30 = copay(10), std90 = copay(30), cat = copay(0);
+  const phases = ph({
+    '0': { '1': { standardRetail: copay(10), preferredRetail: copay(0), preferredMail: copay(0) } },
+    '1': { '1': { standardRetail: std30, preferredRetail: copay(0), preferredMail: copay(0) },
+           '2': { standardRetail: std90, preferredRetail: copay(0), preferredMail: copay(0) } },
+    '3': { '1': { standardRetail: cat, preferredRetail: copay(0), preferredMail: copay(0) } },
+  });
+  const s = F.phaseSummary(phases);
+  assert.deepStrictEqual(s.lines, [
+    'At a standard pharmacy: $10.00 until you reach catastrophic coverage, then $0.00.',
+    'At this plan’s preferred pharmacies (or by mail): $0.00 all year.',
+  ]);
+  assert.strictEqual(s.footnote, 'A 90-day supply at a pharmacy costs about three 30-day fills.');
+});
+
+t('unequal phases: deductible tier states pre-deductible → initial → catastrophic', () => {
+  const phases = ph({
+    '0': { '1': { standardRetail: copay(47) } },
+    '1': { '1': { standardRetail: copay(10) }, '2': { standardRetail: copay(30) } },
+    '3': { '1': { standardRetail: copay(0) } },
+  });
+  const s = F.phaseSummary(phases);
+  assert.strictEqual(s.lines[0], 'At a standard pharmacy: $47.00 before you meet the deductible, then $10.00 until you reach catastrophic coverage, then $0.00.');
+});
+
+t('mail discount: a 90-day-by-mail below 3× is stated as signal, not the shared footnote', () => {
+  const phases = ph({
+    '1': { '1': { standardRetail: copay(10), preferredMail: copay(3) },
+           '2': { standardRetail: copay(30), preferredMail: copay(6) } },
+  });
+  const s = F.phaseSummary(phases);
+  assert.ok(s.lines.some((l) => l.includes('By this plan’s mail-order pharmacy: $3.00 all year — a 90-day supply by mail is $6.00, less than three 30-day fills.')), s.lines.join(' | '));
+  assert.strictEqual(s.footnote, null); // not all channels are the plain 3× → no shared footnote
+});
+
+t('coinsurance: % with the estimated-basis note; no fabricated dollars', () => {
+  const phases = ph({ '1': { '1': { standardRetail: coins(0.25) } }, '3': { '1': { standardRetail: copay(0) } } });
+  const s = F.phaseSummary(phases);
+  assert.strictEqual(s.lines[0], 'At a standard pharmacy: 25% until you reach catastrophic coverage, then $0.00.');
+  assert.ok(s.lines.some((l) => /coinsurance rates/.test(l)), s.lines.join(' | '));
+});
+
+t('n/a channel is omitted honestly (no blank line), and deductible-exempt note integrates', () => {
+  const phases = ph({
+    '0': { '1': { standardRetail: copay(5), preferredRetail: none(), preferredMail: none() } },
+    '1': { '1': { standardRetail: copay(5), preferredRetail: none(), preferredMail: none() } },
+    '3': { '1': { standardRetail: copay(5), preferredRetail: none(), preferredMail: none() } },
+  });
+  const s = F.phaseSummary(phases, { deductibleExempt: true });
+  assert.deepStrictEqual(s.lines, ['At a standard pharmacy: $5.00 all year.']); // no preferred line, no blank
+  assert.ok(s.lines.every((l) => l && !/undefined|null|—\s*$/.test(l)));
+  assert.ok(/skips the plan’s deductible/.test(s.footnote), s.footnote);
+});
+
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

@@ -161,6 +161,26 @@ function inPageAudit(opts) {
       V.readability.push({ el: label(el), detail: `${widthCh.toFixed(1)}ch wide across ${lines} lines (${wordsPerLine.toFixed(1)} words/line) — crushed to ${Math.round(100 * el.clientWidth / parentW)}% of its column` });
     }
   }
+
+  // ---- Rule 7b: allow-listed scroll containers are licensed to OVERFLOW, not to CRUSH ----
+  // The readability run above misses table cells because their content is short (<12 chars) — but a
+  // header wrapping to "Phas/e" or a value to "$1/0.0/0" is a crush. Inside a scroll container, assert
+  // (a) no cell is narrower than its own longest word, and (b) if content genuinely exceeds the box,
+  // the box actually scrolls (scrollWidth > clientWidth) rather than crushing the cells.
+  for (const sc of document.querySelectorAll(overflowExempt.join(','))) {
+    if (!vis(sc)) continue;
+    for (const cellEl of sc.querySelectorAll('th, td')) {
+      if (!vis(cellEl)) continue;
+      const t = (cellEl.textContent || '').trim();
+      if (!t) continue;
+      const longest = Math.max(...t.split(/\s+/).map((w) => w.length));
+      if (longest < 3) continue; // tiny tokens ("$0", "n/a") can't meaningfully crush
+      const cw = cellEl.clientWidth / chOf(getComputedStyle(cellEl));
+      if (cw + 0.5 < longest) {
+        V.readability.push({ el: label(cellEl), detail: `table cell ${cw.toFixed(1)}ch can't fit its ${longest}-char word "${t.slice(0, 20)}" — grid crushed (make it lines, or let it scroll)` });
+      }
+    }
+  }
   return V;
 }
 

@@ -115,6 +115,12 @@ hand too because a mechanism can reappear in a new component:
    squeezed it) and/or keep a **readable minimum** (`flex: 1 1 12ch; min-width: min(12ch, 100%)`) so
    the siblings yield first. Watch the two-badge cases especially (brand + "not on MO plans").
    *(v=21 autocomplete/chip crush; glossary + breakdown rows had the same exposure.)*
+8. **A table wider than the viewport becomes sentences or stacked lines — never a crushed grid, and
+   horizontal scroll is a last resort, not a fix.** If the data has patterns, say the pattern in
+   plain English (collapse equal phases → "all year"; equal channels → one line; the universal
+   90-day = 3× retail → one footnote) and keep the grid for wide screens / print. An allow-listed
+   scroll container is licensed to *scroll*, not to crush — the floor suite now asserts no table cell
+   is narrower than its own longest word. *(v=22 phase/channel detail; `PRFormat.phaseSummary`.)*
 
 ---
 
@@ -136,7 +142,8 @@ The suite (`tests/ux/floors.js`) encodes these, matching `site/DESIGN.md`:
   legal lines included. Secondary/meta text may sit at 16px per the DESIGN.md type scale.
 - **Readability:** a real text run (>12 chars) that wraps to 3+ lines must not render below ~8ch wide
   (≈ <1.5 words/line) when it's crushed to under ~55% of its column — i.e. a sibling squeezed it.
-  Big type filling its full column (a heading in a narrow phone) is not a crush and passes.
+  Big type filling its full column (a heading in a narrow phone) is not a crush and passes. Inside an
+  allow-listed scroll container, additionally: no table cell may be narrower than its own longest word.
 
 Matrix: every page + major state × {360px, 412px} × {default, 200% large-font}.
 

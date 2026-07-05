@@ -78,7 +78,68 @@
     return needSeg && plan.segmentId != null ? base + '-' + plan.segmentId : base;
   }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId };
+  // ---- Phase/channel detail as plain-English lines (replaces a 6-column grid that can't survive a
+  // phone). Pure + deterministic on the same rows the table used, so it's unit-testable and the
+  // screen + any future consumer read identically. Rules: collapse equal phases ("all year"),
+  // collapse equal preferred channels ("preferred pharmacies (or by mail)"), and treat the 90-day
+  // = 3× retail case as ONE shared footnote — stating 90-day per-channel only where it ISN'T 3×
+  // (a real mail discount). Exact dollars/percent, no editorializing; an unoffered channel is simply
+  // omitted (never a blank cell). ----
+  function phaseSummary(phases, opts) {
+    opts = opts || {};
+    const P = phases || {};
+    const at = (lvl, ds, chan) => { const p = P[lvl] && P[lvl].byDaysSupply && P[lvl].byDaysSupply[ds]; return p ? p[chan] : null; };
+    const offered = (c) => !!c && (c.kind === 'copay' || c.kind === 'coinsurance');
+    const pkey = (c) => !offered(c) ? 'na' : (c.kind === 'copay' ? 'c' + c.dollars : 'r' + c.rate);
+    const ptext = (c) => !offered(c) ? null : (c.kind === 'copay' ? '$' + Number(c.dollars).toFixed(2) : Math.round(c.rate * 100) + '%');
+
+    // 30-day price across phases for a channel -> a sentence fragment, or null if not offered.
+    function pattern(chan) {
+      const p0 = at('0', '1', chan), p1 = at('1', '1', chan), p3 = at('3', '1', chan);
+      if (!offered(p1)) return null;
+      let s = (offered(p0) && pkey(p0) !== pkey(p1)) ? (ptext(p0) + ' before you meet the deductible, then ' + ptext(p1)) : ptext(p1);
+      if (offered(p3) && pkey(p3) !== pkey(p1)) s += ' until you reach catastrophic coverage, then ' + ptext(p3);
+      else s += ' all year';
+      return s;
+    }
+    // 90-day vs 3× the 30-day (copay channels only). '3x' | {discount:'$x'} | null.
+    function ninety(chan) {
+      const p1 = at('1', '1', chan), p90 = at('1', '2', chan);
+      if (!offered(p1) || !offered(p90) || p1.kind !== 'copay' || p90.kind !== 'copay') return null;
+      const triple = p1.dollars * 3;
+      if (Math.abs(p90.dollars - triple) < 0.005) return { kind: '3x' };
+      if (p90.dollars < triple - 0.005) return { kind: 'discount', text: '$' + p90.dollars.toFixed(2) };
+      return null;
+    }
+    const withNinety = (line, chan, byMail) => {
+      const n = ninety(chan);
+      if (n && n.kind === 'discount') return line.replace(/\.$/, '') + ' — a 90-day supply' + (byMail ? ' by mail' : '') + ' is ' + n.text + ', less than three 30-day fills.';
+      return line;
+    };
+
+    const lines = [];
+    const std = pattern('standardRetail');
+    if (std) lines.push(withNinety('At a standard pharmacy: ' + std + '.', 'standardRetail', false));
+
+    const pr = pattern('preferredRetail'), pm = pattern('preferredMail');
+    if (pr && pm && pr === pm) lines.push(withNinety('At this plan’s preferred pharmacies (or by mail): ' + pr + '.', 'preferredMail', true));
+    else {
+      if (pr) lines.push(withNinety('At this plan’s preferred pharmacies: ' + pr + '.', 'preferredRetail', false));
+      if (pm) lines.push(withNinety('By this plan’s mail-order pharmacy: ' + pm + '.', 'preferredMail', true));
+    }
+
+    const CH = ['standardRetail', 'preferredRetail', 'preferredMail', 'standardMail'];
+    const anyCoins = CH.some((c) => { const x = at('1', '1', c); return x && x.kind === 'coinsurance'; });
+    if (anyCoins) lines.push('These are coinsurance rates — your dollar cost depends on the drug’s price and how much you take.');
+
+    const ns = CH.map(ninety).filter(Boolean);
+    let footnote = (ns.length && ns.every((n) => n.kind === '3x')) ? 'A 90-day supply at a pharmacy costs about three 30-day fills.' : null;
+    if (opts.deductibleExempt) footnote = (footnote ? footnote + ' ' : '') + 'This drug skips the plan’s deductible.';
+
+    return { lines, footnote };
+  }
+
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);
