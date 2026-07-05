@@ -20,6 +20,10 @@ const BROKEN = `<!doctype html><html><head><style>
   .crushrow{display:flex;width:300px;font-size:19px}
   .crushname{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
   .crushsib{flex:none;width:268px;background:#ddd}
+  /* a full-width grid stuffed into a narrow scroll box — cells crush instead of scrolling */
+  .detail-scroll{overflow-x:auto;width:110px;font-size:16px}
+  .detail-scroll table{width:100%;border-collapse:collapse}
+  .detail-scroll td{border:1px solid #ccc}
 </style></head><body>
   <div class="overprint"><span class="a">Aaaa bbbb cccc</span><span class="b">Xxxx yyyy zzzz</span></div>
   <div class="wide">too wide — horizontal overflow</div>
@@ -27,6 +31,7 @@ const BROKEN = `<!doctype html><html><head><style>
   <p class="lowcontrast">low contrast body text that axe should flag</p>
   <button class="smallbtn nofocus">x</button>
   <div class="crushrow"><span class="crushname">metoprolol succinate extended release tablet</span><span class="crushsib">badge</span></div>
+  <div class="detail-scroll"><table><tr><td>Preferred</td><td>Standard</td><td>Catastrophic</td></tr></table></div>
 </body></html>`;
 
 test('checkers catch a deliberately-broken page (humane report)', async ({ page }) => {
@@ -46,6 +51,7 @@ test('checkers catch a deliberately-broken page (humane report)', async ({ page 
   expect(rules, report).toContain('TYPE');       // 9px text < 14px floor
   expect(rules, report).toContain('CONTRAST');     // #c8c8c8 on #fff fails AA
   expect(rules, report).toContain('READABILITY');  // name column crushed to a sliver by a fixed sibling
+  expect(report, report).toMatch(/grid crushed/);  // a table stuffed into a narrow scroll box crushes its cells
   // report is human-readable: "· [RULE] element — detail"
   expect(report).toMatch(/\[(OVERFLOW|TOUCH|TYPE|CONTRAST|READABILITY)\]/);
 });

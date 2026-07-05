@@ -316,6 +316,13 @@ details.phases { grid-column: 1 / -1; margin-top: var(--sp-2); }
 summary { cursor: pointer; color: var(--accent); font-size: var(--fs-sm); font-weight: 600; min-height: var(--tap); display: flex; align-items: center; }
 summary::-webkit-details-marker { }
 .phase-intro { color: var(--ink-2); font-size: var(--fs-sm); max-width: 70ch; margin: var(--sp-2) 0; }
+/* pattern-collapsed summary lines — the default reading of the phase/channel detail */
+.phase-summary { list-style: none; padding: 0; margin: var(--sp-2) 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.phase-summary li { padding-left: var(--sp-4); position: relative; overflow-wrap: anywhere; }
+.phase-summary li::before { content: '·'; position: absolute; left: var(--sp-2); color: var(--ink-3); }
+.phase-foot { color: var(--ink-2); font-size: var(--fs-sm); margin: 0 0 var(--sp-2); overflow-wrap: anywhere; }
+/* full grid behind "See the full table" — available where it fits (wide screens / print) */
+.full-table > summary { font-size: var(--fs-sm); font-weight: 600; color: var(--accent); cursor: pointer; padding: var(--sp-2) 0; width: fit-content; }
 table.detail { width: 100%; border-collapse: collapse; margin-top: var(--sp-2); font-size: var(--fs-sm); }
 table.detail th, table.detail td { border: 1px solid var(--line); padding: 6px var(--sp-3); text-align: center; }
 table.detail th { background: var(--surface-2); font-weight: 600; }
@@ -364,7 +371,9 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
      Removes all column competition so nothing can squeeze or overprint on a phone. */
   .drug-row { grid-template-columns: 1fr; }
   .headline { text-align: left; }
-  /* Phase/channel table can be wider than a phone — scroll it instead of crushing the cells. */
+  /* Phase/channel grid can't survive a phone — the summary lines ARE the interface here; the full
+     grid is not reachable (it would only crush). Scroll containers still scroll where they appear. */
+  .phases .full-table { display: none; }
   .detail-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   /* Medication chips: one per row, then stack inside — name (+ badge) on top wrapping full width,
      quantity + remove beneath, right-aligned. No fixed control ever crushes the name. */
