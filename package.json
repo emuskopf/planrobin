@@ -19,7 +19,7 @@
     "make-fixtures": "bash tests/make_fixtures.sh",
     "dev": "node dev/server.js",
     "build-overrides": "node tools/overrides/build-classification.js",
-    "test": "node tests/overrides.test.js && node tests/acceptance.test.js"
+    "test": "node tests/overrides.test.js && node tests/channels.test.js && node tests/acceptance.test.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

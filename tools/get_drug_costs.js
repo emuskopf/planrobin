@@ -35,17 +35,27 @@ async function getDrugCosts(rxcuis, planId, db) {
   const cy = await db.query(`select contract_year from formularies where formulary_id=$1`, [planInfo.formularyId]);
   const planYear = parseInt(cy.rows[0] && cy.rows[0].contract_year, 10) || 2026;
 
-  // Plan-level insulin cost sharing (standard retail = nonpref), keyed tier -> days -> {copay,coin}.
+  // Plan-level insulin cost sharing, all four pharmacy channels, keyed tier -> days -> channel.
   const insRes = await db.query(
-    `select tier, days_supply, copay_nonpref, coin_nonpref from insulin_costs
-       where contract_id=$1 and plan_id=$2 and segment_id=$3`,
+    `select tier, days_supply,
+            copay_pref, copay_nonpref, copay_mail_pref, copay_mail_nonpref,
+            coin_pref,  coin_nonpref,  coin_mail_pref,  coin_mail_nonpref
+       from insulin_costs where contract_id=$1 and plan_id=$2 and segment_id=$3`,
     [contract, plan, segment]
   );
-  const insulinByTierDays = {};
+  const nn = (v) => (v == null ? null : Number(v));
+  const insulinByTierDays = {};           // standard-retail (nonpref) — anchor, back-compat
+  const insulinByTierDaysChannel = {};    // all four channels, for per-channel projection
   for (const r of insRes.rows) {
-    const tk = r.tier == null ? 'null' : String(r.tier);
-    (insulinByTierDays[tk] = insulinByTierDays[tk] || {})[String(r.days_supply)] =
-      { copay: r.copay_nonpref == null ? null : Number(r.copay_nonpref), coin: r.coin_nonpref == null ? null : Number(r.coin_nonpref) };
+    const tk = r.tier == null ? 'null' : String(r.tier), dk = String(r.days_supply);
+    (insulinByTierDays[tk] = insulinByTierDays[tk] || {})[dk] =
+      { copay: nn(r.copay_nonpref), coin: nn(r.coin_nonpref) };
+    const byCh = (insulinByTierDaysChannel[tk] = insulinByTierDaysChannel[tk] || {});
+    const put = (ch, copay, coin) => { (byCh[ch] = byCh[ch] || {})[dk] = { copay, coin }; };
+    put('standardRetail',  nn(r.copay_nonpref),      nn(r.coin_nonpref));
+    put('preferredRetail', nn(r.copay_pref),         nn(r.coin_pref));
+    put('standardMail',    nn(r.copay_mail_nonpref), nn(r.coin_mail_nonpref));
+    put('preferredMail',   nn(r.copay_mail_pref),    nn(r.coin_mail_pref));
   }
 
   const drugs = [];
@@ -101,11 +111,23 @@ async function getDrugCosts(rxcuis, planId, db) {
     // costsByPhase stays file-derived; `overrides.effectivePerFill` is the override-applied cost.
     const initial = costsByPhase['1'] && costsByPhase['1'].byDaysSupply;
     const standardRetailByDays = {};
-    for (const d of ['1', '2', '4']) if (initial && initial[d]) standardRetailByDays[d] = initial[d].standardRetail;
+    // Per-channel file cost-sharing for the annual pharmacy-channel savings calc (initial coverage).
+    const channelsByDays = { standardRetail: {}, preferredRetail: {}, standardMail: {}, preferredMail: {} };
+    for (const d of ['1', '2', '4']) {
+      if (!initial || !initial[d]) continue;
+      standardRetailByDays[d] = initial[d].standardRetail;
+      channelsByDays.standardRetail[d] = initial[d].standardRetail;
+      channelsByDays.preferredRetail[d] = initial[d].preferredRetail;
+      channelsByDays.standardMail[d] = initial[d].standardMail;
+      channelsByDays.preferredMail[d] = initial[d].preferredMail;
+    }
     const dedAppliesTier = !!(initial && (initial['1'] || initial['2'] || initial['4'] || {}).dedApplies);
+    const insTier = insulinByTierDays[String(tier)] || insulinByTierDays['null'] || null;
+    const insTierChannel = insulinByTierDaysChannel[String(tier)] || insulinByTierDaysChannel['null'] || null;
     const overrideModel = applyPerFillOverrides({
       rxcui: String(rxcui), tier, dedAppliesTier, planYear,
-      standardRetailByDays, insulinByDays: insulinByTierDays[String(tier)] || insulinByTierDays['null'] || null,
+      standardRetailByDays, insulinByDays: insTier,
+      channelsByDays, insulinByChannelDays: insTierChannel,
     });
 
     drugs.push({
@@ -117,6 +139,7 @@ async function getDrugCosts(rxcuis, planId, db) {
         isInsulin: overrideModel.isInsulin, isVaccine: overrideModel.isVaccine,
         deductibleApplies: overrideModel.deductibleApplies, // post-override (false for insulin/vaccine)
         effectivePerFill: overrideModel.perFill,           // override-applied standard-retail cost by days-supply
+        effectivePerFillByChannel: overrideModel.perFillByChannel, // ...same, per pharmacy channel
       },
     });
   }

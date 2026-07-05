@@ -30,24 +30,24 @@ function classify(rxcui) {
   return { isInsulin: INSULIN.has(k), isVaccine: VACCINE.has(k) };
 }
 
-// --- Rules 1-3 (per fill) -------------------------------------------------
-// inputs:
-//   rxcui, tier, dedAppliesTier (bool from tier_costs.ded_applies), planYear
-//   standardRetailByDays: { '1': {kind,dollars,rate}, '2': {...}, '4': {...} }  (file-derived, initial coverage, standard retail)
-//   insulinByDays:        { '1': {copay,coin}, ... }  (standard-retail insulin cost sharing; null if none)
-// returns a per-drug cost model with BOTH values + appliedOverrides.
-function applyPerFillOverrides({ rxcui, tier, dedAppliesTier, planYear, standardRetailByDays, insulinByDays }) {
-  const p = paramsForYear(planYear);
-  const { isInsulin, isVaccine } = classify(rxcui);
-  const fileDerived = standardRetailByDays || {};
-  const applied = [];
+// The four pharmacy channels the PUF prices, in the order we present them. Standard retail is
+// the anchor (the headline number). Savings, if any, come from one of the other three.
+const CHANNELS = ['standardRetail', 'preferredRetail', 'standardMail', 'preferredMail'];
+
+// --- Rules 1-3 (per fill), computed for ONE pharmacy channel -----------------
+// fileDerivedByDays: { '1': {kind,dollars,rate}, '2': {...}, '4': {...} } — this channel's
+//                    file cost-sharing (initial coverage) per days-supply.
+// insulinByDays:     { '1': {copay,coin}, ... } — this channel's insulin cost sharing, or null.
+// The override RULES (which one fires) are channel-invariant; only the dollar inputs differ, so
+// this returns just the per-fill cost map for the channel.
+function channelPerFill({ isInsulin, isVaccine, p, fileDerivedByDays, insulinByDays }) {
+  const fileDerived = fileDerivedByDays || {};
   const perFill = {};
 
   if (isVaccine) {
     // Rule 2 — ACIP adult vaccine: $0 cost-sharing, deductible-exempt.
     for (const d of ['1', '2', '4']) if (fileDerived[d]) perFill[d] = { kind: 'copay', dollars: 0, rate: null, source: 'override' };
-    applied.push({ rule: 'acip_vaccine_free', statute: VACCINE_RULE.statute, note: 'ACIP-recommended adult vaccine — $0 under Part D by federal law' });
-    return { rxcui: String(rxcui), tier, isInsulin, isVaccine, appliedOverrides: applied, deductibleApplies: false, perFill, fileDerived };
+    return perFill;
   }
 
   if (isInsulin) {
@@ -67,13 +67,55 @@ function applyPerFillOverrides({ rxcui, tier, dedAppliesTier, planYear, standard
       else { dollars = capDollars; capped = true; note = `coinsurance capped at the $${capDollars} federal insulin ceiling (exact amount needs drug price)`; isCoin && (note += '; shown as the legal maximum'); }
       perFill[d] = { kind: 'copay', dollars, rate: null, capped, source: 'override', note };
     }
-    applied.push({ rule: 'insulin_cap_35', statute: 'SSA 1860D-2(b)(9) / IRA 11406', note: `covered insulin capped at $${p.insulinMonthlyCap}/30-day supply; deductible waived` });
-    return { rxcui: String(rxcui), tier, isInsulin, isVaccine, appliedOverrides: applied, deductibleApplies: false, perFill, fileDerived };
+    return perFill;
   }
 
-  // No product override: effective == file-derived; deductible applies per the tier's data (Rule 3).
+  // No product override: effective == file-derived; deductible handled by projectAnnual (Rule 3).
   for (const d of ['1', '2', '4']) if (fileDerived[d]) perFill[d] = { ...fileDerived[d], source: 'file' };
-  return { rxcui: String(rxcui), tier, isInsulin, isVaccine, appliedOverrides: applied, deductibleApplies: !!dedAppliesTier, perFill, fileDerived };
+  return perFill;
+}
+
+// --- Rules 1-3 (per fill) -------------------------------------------------
+// inputs:
+//   rxcui, tier, dedAppliesTier (bool from tier_costs.ded_applies), planYear
+//   standardRetailByDays: { '1': {kind,dollars,rate}, ... }  (file-derived, initial coverage, standard retail)
+//   insulinByDays:        { '1': {copay,coin}, ... }  (standard-retail insulin cost sharing; null if none)
+//   channelsByDays:       { standardRetail:{...}, preferredRetail:{...}, standardMail:{...}, preferredMail:{...} }
+//                         each a per-days file cost map (optional — enables per-channel output)
+//   insulinByChannelDays: same shape, per-channel insulin cost sharing (optional)
+// returns a per-drug cost model with BOTH the file-derived and override-applied values,
+// appliedOverrides, and (when channel data is supplied) perFillByChannel for all four channels.
+function applyPerFillOverrides({ rxcui, tier, dedAppliesTier, planYear, standardRetailByDays, insulinByDays, channelsByDays, insulinByChannelDays }) {
+  const p = paramsForYear(planYear);
+  const { isInsulin, isVaccine } = classify(rxcui);
+  const fileDerived = standardRetailByDays || {};
+  const applied = [];
+
+  // Standard-retail per-fill (the anchor; unchanged behavior, pinned by the unit tests).
+  const perFill = channelPerFill({ isInsulin, isVaccine, p, fileDerivedByDays: fileDerived, insulinByDays });
+
+  // A statutory override waives the deductible; otherwise it applies per the tier's data (Rule 3).
+  const deductibleApplies = isInsulin || isVaccine ? false : !!dedAppliesTier;
+  if (isVaccine) applied.push({ rule: 'acip_vaccine_free', statute: VACCINE_RULE.statute, note: 'ACIP-recommended adult vaccine — $0 under Part D by federal law' });
+  if (isInsulin) applied.push({ rule: 'insulin_cap_35', statute: 'SSA 1860D-2(b)(9) / IRA 11406', note: `covered insulin capped at $${p.insulinMonthlyCap}/30-day supply; deductible waived` });
+
+  const out = { rxcui: String(rxcui), tier, isInsulin, isVaccine, appliedOverrides: applied, deductibleApplies, perFill, fileDerived };
+
+  // Per-channel per-fill: same rules, each channel's own file dollars. Standard retail is
+  // recomputed here too so perFillByChannel.standardRetail === perFill (kept in lockstep).
+  if (channelsByDays) {
+    const perFillByChannel = {}, fileDerivedByChannel = {};
+    for (const ch of CHANNELS) {
+      const cd = channelsByDays[ch];
+      if (!cd) { perFillByChannel[ch] = null; fileDerivedByChannel[ch] = null; continue; }
+      perFillByChannel[ch] = channelPerFill({ isInsulin, isVaccine, p, fileDerivedByDays: cd,
+        insulinByDays: insulinByChannelDays && insulinByChannelDays[ch] });
+      fileDerivedByChannel[ch] = cd;
+    }
+    out.perFillByChannel = perFillByChannel;
+    out.fileDerivedByChannel = fileDerivedByChannel;
+  }
+  return out;
 }
 
 // --- Rules 4-5 (annual projection) ----------------------------------------
@@ -130,4 +172,63 @@ function projectAnnual({ premium, deductible, planYear, drugs, daysSupply }) {
   };
 }
 
-module.exports = { classify, applyPerFillOverrides, projectAnnual, INSULIN, VACCINE, DAYS_MONTHS, FILLS_PER_YEAR };
+// --- Pharmacy-channel savings (V1) ----------------------------------------
+// Project the annual cost separately for each pharmacy channel, holding days-supply constant
+// at the anchor (so we compare ONLY the channel, never quietly assume a days-supply change),
+// then report the single biggest honest saving vs. standard retail — or nothing.
+//
+// Channel-level only: this compares "standard retail" vs "preferred retail / mail" as the PUF
+// prices them. It does NOT name specific pharmacies (that's the Pharmacy Network file, later).
+
+const SAVINGS_MIN = 25; // below this annual saving we stay quiet (don't cry "opportunity" over $3)
+const CHANNEL_COPY = {
+  preferredRetail: { label: 'preferred pharmacy', phrase: 'by using one of its preferred pharmacies' },
+  standardMail:    { label: 'mail order',         phrase: 'by using mail order' },
+  preferredMail:   { label: 'preferred mail order', phrase: 'by using the plan’s preferred mail-order pharmacy' },
+};
+
+// Round a saving to a calm, non-false-precision figure: nearest $10 at/above $100, else nearest $5.
+function roundSavings(x) { return x >= 100 ? Math.round(x / 10) * 10 : Math.round(x / 5) * 5; }
+
+// drugsByChannel: { standardRetail:[{rxcui,perFill,deductibleApplies}], preferredRetail:[...], ... }
+// A channel with no data (null) projects to null — never interpolated.
+function projectChannels({ premium, deductible, planYear, drugsByChannel, daysSupply }) {
+  const out = {};
+  for (const ch of CHANNELS) {
+    out[ch] = drugsByChannel && drugsByChannel[ch]
+      ? projectAnnual({ premium, deductible, planYear, drugs: drugsByChannel[ch], daysSupply })
+      : null;
+  }
+  return out;
+}
+
+// Given per-channel projections, return the best honest saving vs. standard retail, or null.
+// Rules: the anchor must be a complete dollar total; a candidate channel must also be complete
+// (a coinsurance/not-offered channel can't be totaled -> skipped, NOT treated as $0); and the
+// saving must clear the minimum threshold. If nothing qualifies, return null (show nothing —
+// never "$0 savings").
+function computeChannelSavings(channelProjections, opts = {}) {
+  const minSavings = opts.minSavings == null ? SAVINGS_MIN : opts.minSavings;
+  const base = channelProjections && channelProjections.standardRetail;
+  if (!base || base.incomplete) return null; // no complete anchor -> can't compare honestly
+  let best = null;
+  for (const ch of ['preferredRetail', 'standardMail', 'preferredMail']) {
+    const proj = channelProjections[ch];
+    if (!proj || proj.incomplete) continue;                 // absent or un-totalable -> skip
+    const raw = Number((base.annualTotal - proj.annualTotal).toFixed(2));
+    if (raw < minSavings) continue;                         // trivial (or none) -> stay quiet
+    if (!best || raw > best.amount) best = { channel: ch, amount: raw, channelTotal: proj.annualTotal };
+  }
+  if (!best) return null;
+  const copy = CHANNEL_COPY[best.channel];
+  return {
+    channel: best.channel, channelLabel: copy.label, phrase: copy.phrase,
+    amount: best.amount, displayAmount: roundSavings(best.amount),
+    vsChannel: 'standardRetail', anchorTotal: base.annualTotal, channelTotal: best.channelTotal,
+  };
+}
+
+module.exports = {
+  classify, applyPerFillOverrides, projectAnnual, projectChannels, computeChannelSavings,
+  roundSavings, CHANNELS, SAVINGS_MIN, INSULIN, VACCINE, DAYS_MONTHS, FILLS_PER_YEAR,
+};

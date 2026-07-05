@@ -4,7 +4,7 @@
 // Hermetic: no DB, no network. Run: node tests/overrides.test.js
 
 const assert = require('assert');
-const { applyPerFillOverrides, projectAnnual, classify } = require('../tools/overrides');
+const { applyPerFillOverrides, projectAnnual, projectChannels, computeChannelSavings, roundSavings, classify } = require('../tools/overrides');
 const { paramsForYear } = require('../tools/overrides/statutory-params');
 
 let passed = 0;
@@ -118,6 +118,118 @@ t('deductible flagged (not fabricated) when a deductible-applicable drug is pres
     drugs: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 40 } }, deductibleApplies: true }], daysSupply: 1 });
   assert.strictEqual(proj.deductible.appliesToAnyDrug, true);
   assert.strictEqual(proj.deductible.amount, 615);
+});
+
+console.log('\nPharmacy-channel savings (V1):');
+t('applyPerFillOverrides emits per-channel per-fill; rules apply identically per channel', () => {
+  // Vaccine -> $0 in every channel that has file data; a channel with no file data -> no entry.
+  const m = applyPerFillOverrides({ rxcui: VACCINE_RX, tier: 1, dedAppliesTier: true, planYear: 2026,
+    standardRetailByDays: { '1': { kind: 'coinsurance', rate: 0.25 } }, insulinByDays: null,
+    channelsByDays: {
+      standardRetail: { '1': { kind: 'coinsurance', rate: 0.25 } },
+      preferredRetail: { '1': { kind: 'not_offered' } },
+      standardMail: { '1': { kind: 'copay', dollars: 20 } },
+      preferredMail: null,
+    } });
+  assert.strictEqual(m.perFillByChannel.standardRetail['1'].dollars, 0);      // $0 by vaccine rule
+  assert.strictEqual(m.perFillByChannel.standardMail['1'].dollars, 0);        // $0 in mail too
+  assert.strictEqual(m.perFillByChannel.preferredMail, null);                 // no data -> null
+  assert.deepStrictEqual(m.perFillByChannel.standardRetail, m.perFill);       // standard == anchor
+});
+
+t('projectChannels: a channel with no data projects to null, never interpolated', () => {
+  const proj = projectChannels({ premium: 0, deductible: 0, planYear: 2026, daysSupply: 1,
+    drugsByChannel: {
+      standardRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 10 } }, deductibleApplies: false }],
+      preferredRetail: null,
+      standardMail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 4 } }, deductibleApplies: false }],
+      preferredMail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 4 } }, deductibleApplies: false }],
+    } });
+  assert.strictEqual(proj.standardRetail.annualDrugOOP, 120);
+  assert.strictEqual(proj.preferredRetail, null);
+  assert.strictEqual(proj.standardMail.annualDrugOOP, 48);
+});
+
+t('savings: real preferred/standard differential -> saving on the cheaper channel', () => {
+  // $10/mo standard vs $4/mo preferred retail => (120-48)=$72/yr saving, above threshold.
+  const chProj = projectChannels({ premium: 20, deductible: 0, planYear: 2026, daysSupply: 1,
+    drugsByChannel: {
+      standardRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 10 } }, deductibleApplies: false }],
+      preferredRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 4 } }, deductibleApplies: false }],
+      standardMail: null, preferredMail: null,
+    } });
+  const s = computeChannelSavings(chProj);
+  assert.ok(s, 'a saving should be reported');
+  assert.strictEqual(s.channel, 'preferredRetail');
+  assert.strictEqual(s.amount, 72);
+  assert.strictEqual(s.channelLabel, 'preferred pharmacy');
+});
+
+t('savings: plan with NO differential -> null (show nothing, not "$0 savings")', () => {
+  const chProj = projectChannels({ premium: 0, deductible: 0, planYear: 2026, daysSupply: 1,
+    drugsByChannel: {
+      standardRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 5 } }, deductibleApplies: false }],
+      preferredRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 5 } }, deductibleApplies: false }],
+      standardMail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 5 } }, deductibleApplies: false }],
+      preferredMail: null,
+    } });
+  assert.strictEqual(computeChannelSavings(chProj), null);
+});
+
+t('savings: sub-threshold difference stays silent (no "$3 opportunity")', () => {
+  // $12/yr difference ($1/mo) is below the $25/yr floor.
+  const chProj = projectChannels({ premium: 0, deductible: 0, planYear: 2026, daysSupply: 1,
+    drugsByChannel: {
+      standardRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 5 } }, deductibleApplies: false }],
+      preferredRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 4 } }, deductibleApplies: false }],
+      standardMail: null, preferredMail: null,
+    } });
+  assert.strictEqual(computeChannelSavings(chProj), null); // 12 < 25 -> quiet
+});
+
+t('savings: incomplete anchor (coinsurance) -> null (can\'t compare honestly)', () => {
+  const chProj = projectChannels({ premium: 0, deductible: 0, planYear: 2026, daysSupply: 1,
+    drugsByChannel: {
+      standardRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'coinsurance', rate: 0.25 } }, deductibleApplies: false }],
+      preferredRetail: [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 4 } }, deductibleApplies: false }],
+      standardMail: null, preferredMail: null,
+    } });
+  assert.strictEqual(computeChannelSavings(chProj), null);
+});
+
+t('cap month differs by channel; both cap out -> no channel saving claimed', () => {
+  // Big basket: standard $600/mo hits $2,100 in month 4; preferred $525/mo hits it in month 4 too.
+  const std = [1,2,3,4,5].map((i) => ({ rxcui: 'x'+i, perFill: { '1': { kind: 'copay', dollars: 120 } }, deductibleApplies: false }));
+  const pref = [1,2,3,4,5].map((i) => ({ rxcui: 'x'+i, perFill: { '1': { kind: 'copay', dollars: 105 } }, deductibleApplies: false }));
+  const chProj = projectChannels({ premium: 0, deductible: 0, planYear: 2026, daysSupply: 1,
+    drugsByChannel: { standardRetail: std, preferredRetail: pref, standardMail: null, preferredMail: null } });
+  assert.strictEqual(chProj.standardRetail.capHit.month, 4);   // 600/mo
+  assert.strictEqual(chProj.preferredRetail.capHit.month, 4);  // 525/mo -> 2100 by month 4 as well
+  assert.strictEqual(chProj.standardRetail.annualDrugOOP, 2100);
+  assert.strictEqual(chProj.preferredRetail.annualDrugOOP, 2100);
+  // Both hit the same $2,100 cap -> your annual total is identical -> we must NOT claim a saving.
+  assert.strictEqual(computeChannelSavings(chProj), null);
+});
+
+t('cap month differs by channel; only standard caps -> real saving below the cap', () => {
+  // Standard $200/mo hits cap in month 11 ($2,100). Preferred $80/mo never caps ($960/yr).
+  const std = [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 200 } }, deductibleApplies: false }];
+  const pref = [{ rxcui: 'a', perFill: { '1': { kind: 'copay', dollars: 80 } }, deductibleApplies: false }];
+  const chProj = projectChannels({ premium: 0, deductible: 0, planYear: 2026, daysSupply: 1,
+    drugsByChannel: { standardRetail: std, preferredRetail: pref, standardMail: null, preferredMail: null } });
+  assert.strictEqual(chProj.standardRetail.capHit.reached, true);
+  assert.strictEqual(chProj.standardRetail.annualDrugOOP, 2100);
+  assert.strictEqual(chProj.preferredRetail.capHit.reached, false);
+  assert.strictEqual(chProj.preferredRetail.annualDrugOOP, 960);
+  const s = computeChannelSavings(chProj);
+  assert.strictEqual(s.amount, 1140); // 2100 - 960, cap correctly bounded the standard channel
+});
+
+t('roundSavings: calm, non-false-precision figures', () => {
+  assert.strictEqual(roundSavings(72), 70);     // <100 -> nearest 5 ... 72 -> 70
+  assert.strictEqual(roundSavings(27), 25);
+  assert.strictEqual(roundSavings(322), 320);   // >=100 -> nearest 10
+  assert.strictEqual(roundSavings(1140), 1140);
 });
 
 console.log(`\nALL OVERRIDE UNIT TESTS PASSED (${passed}).`);

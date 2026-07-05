@@ -182,6 +182,16 @@ button.primary:disabled { background: #b7c0c4; color: #eef1f2; cursor: not-allow
 .annual .num.incomplete { color: var(--caution); }
 .annual .lbl { color: var(--ink-2); font-size: var(--fs-fine); }
 
+/* pharmacy-channel savings — calm, information-only line under the plan head */
+.savings { padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line);
+  background: var(--good-tint); }
+.savings-line { display: flex; align-items: flex-start; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--ink); }
+.savings-line .ic { color: var(--good); flex: none; margin-top: 1px; }
+.savings-line strong { color: var(--good); }
+.savings-more { margin-top: var(--sp-2); }
+.savings-more summary { min-height: 0; font-size: var(--fs-fine); color: var(--accent); }
+.savings-more p { font-size: var(--fs-sm); color: var(--ink-2); margin: var(--sp-2) 0 0; max-width: 62ch; }
+
 /* drug rows */
 .drug-row { display: grid; grid-template-columns: 1fr auto; gap: var(--sp-2) var(--sp-4); align-items: baseline;
   padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line); }

@@ -14,6 +14,7 @@ const ICON = {
   check: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10.5l3.5 3.5L16 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   cross: '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round"/></svg>',
   law: '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3v13M4 16h12M6.5 7h7M6.5 7L4.5 11.5a2 2 0 004 0L6.5 7zm7 0l-2 4.5a2 2 0 004 0L13.5 7z" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  save: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 4a6 6 0 100 12 6 6 0 000-12z"/><path d="M10 7v6M8 9.2c0-.8.9-1.2 2-1.2s2 .5 2 1.3-.9 1.2-2 1.2-2 .5-2 1.3.9 1.2 2 1.2 2-.4 2-1.2" stroke-linecap="round"/></svg>',
 };
 const ic = (name) => { const s = el('span', { className: 'ic' }); s.innerHTML = ICON[name]; return s; };
 // Which applied override → a plain-English "by federal law" badge (the trust feature).
@@ -32,6 +33,7 @@ const TERMS = {
   'standard-retail': 'Any in-network pharmacy.',
   'preferred-retail': 'Specific pharmacies the plan picks as lower-cost.',
   'preferred-mail': 'The plan’s mail-order pharmacy — often the cheapest, especially for 90-day fills.',
+  'preferred-pharmacy': 'A pharmacy this plan has negotiated lower copays with. Most big chains are “preferred” on some plans and “standard” on others — it depends on the plan, not just the pharmacy.',
   'days-supply': 'How many days each fill covers. A 90-day fill is often cheaper per month.',
   // Plan types
   'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare.',
@@ -292,8 +294,40 @@ function renderPlan(p) {
     annual,
   ]);
   const card = el('div', { className: 'plan' }, [head]);
+  const sav = renderSavings(p);
+  if (sav) card.append(sav);
   for (const [rxcui, meta] of state.drugs) card.append(renderDrugRow(rxcui, meta, p.drugs[rxcui]));
   return card;
+}
+
+// A calm, information-only savings line: if the SAME plan is cheaper through a preferred
+// pharmacy or by mail, say so — rounded, never a re-ranking. Nothing shows when there's no
+// real differential. One tap opens a plain-English explainer (we can't name pharmacies yet).
+function renderSavings(p) {
+  const s = p.savings;
+  if (!s) return null;
+  const wrap = el('div', { className: 'savings' });
+  const line = el('div', { className: 'savings-line' }, [
+    ic('save'),
+    el('span', {}, [
+      document.createTextNode('Save about '),
+      el('strong', { textContent: '$' + Number(s.displayAmount).toLocaleString() + '/year' }),
+      document.createTextNode(' on this same plan ' + s.phrase + '.'),
+    ]),
+  ]);
+  wrap.append(line);
+
+  const det = el('details', { className: 'savings-more' });
+  det.append(el('summary', { textContent: 'What’s a preferred pharmacy?' }));
+  det.append(el('p', { textContent: TERMS['preferred-pharmacy'] }));
+  det.append(el('p', {}, [
+    el('strong', { textContent: 'We can show the savings; your plan’s directory shows which pharmacies qualify. ' }),
+    document.createTextNode('To find this plan’s preferred pharmacies, check the plan’s website or call 1-800-MEDICARE. ' +
+      'The estimate above holds your days-supply the same and changes only where you fill — it’s information, not a recommendation.'),
+  ]));
+  det.append(faqLink('preferred-pharmacy'));
+  wrap.append(det);
+  return wrap;
 }
 
 function renderDrugRow(rxcui, meta, res) {
