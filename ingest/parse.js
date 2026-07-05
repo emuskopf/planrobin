@@ -35,6 +35,9 @@ function findFileOpt(dir, includes, excludes = []) {
   try { return findFile(dir, includes, excludes); } catch (_) { return null; }
 }
 
+// A fixed-name optional file (the crosswalks have exact names, not CMS's double-spaced ones).
+function fixedFileOpt(dir, name) { const p = path.join(dir, name); return fs.existsSync(p) ? p : null; }
+
 function resolveFiles(dir) {
   return {
     planInfo: findFile(dir, ['plan information'], ['sample']),
@@ -48,8 +51,10 @@ function resolveFiles(dir) {
   };
 }
 
-async function parseMissouri(sourceDir) {
+async function parseMissouri(sourceDir, opts = {}) {
   const files = resolveFiles(sourceDir);
+  // Crosswalks may live in a separate dir (production: data/crosswalks; tests: the fixture dir).
+  const crosswalkDir = opts.crosswalkDir || sourceDir;
 
   // 1) Missouri counties + the regions that define MO service area.
   const counties = [];
@@ -168,7 +173,30 @@ async function parseMissouri(sourceDir) {
     }
   }
 
-  return { files, counties, plans, planCounties, formularies, drugTiers, tierCosts, insulinCosts, drugPrices };
+  // 7) Crosswalks (optional): SSA<->FIPS + ZIP->county. Absence is non-fatal — ingest still
+  //    runs and fips_code just stays NULL (the pre-ZIP behavior). Pipe-delimited, fixed names.
+  const ssaFips = [];
+  const ssaFipsFile = fixedFileOpt(crosswalkDir, 'ssa_fips_mo.txt');
+  if (ssaFipsFile) {
+    for await (const r of streamRows(ssaFipsFile)) {
+      const ssa = (r.ssa_code || '').trim(), fips = (r.fips_code || '').trim();
+      if (!ssa || !fips) continue;
+      ssaFips.push({ ssa_code: ssa, fips_code: fips, county_name: (r.county_name || '').trim(), state: (r.state || '').trim() });
+    }
+    files.ssaFips = ssaFipsFile;
+  }
+  const zipCounties = [];
+  const zipFile = fixedFileOpt(crosswalkDir, 'zip_county_mo.txt');
+  if (zipFile) {
+    for await (const r of streamRows(zipFile)) {
+      const zip = (r.zip || '').trim(), fips = (r.county_fips || '').trim();
+      if (!/^\d{5}$/.test(zip) || !/^\d{5}$/.test(fips)) continue;
+      zipCounties.push({ zip, county_fips: fips, res_ratio: numOrNull(r.res_ratio) });
+    }
+    files.zipCounties = zipFile;
+  }
+
+  return { files, counties, plans, planCounties, formularies, drugTiers, tierCosts, insulinCosts, drugPrices, ssaFips, zipCounties };
 }
 
 module.exports = { parseMissouri, resolveFiles };

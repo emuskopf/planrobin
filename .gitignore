@@ -7,6 +7,11 @@
 # ...but DO track the input templates so the expected format is documented in-repo.
 !data/*.template
 
+# DO track the small MO ZIP/SSA/FIPS crosswalks — public-domain reference data, tiny, and
+# the deterministic source ingest loads (rebuild with `node scripts/build_crosswalks.js`).
+!data/crosswalks/
+!data/crosswalks/*.txt
+
 # Local embedded-Postgres data dir (regenerable via `npm run ingest`)
 .pglite/
 

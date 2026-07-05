@@ -20,7 +20,7 @@ const ic = (name) => { const s = el('span', { className: 'ic' }); s.innerHTML = 
 // Which applied override → a plain-English "by federal law" badge (the trust feature).
 const LAW_BADGE = { insulin_cap_35: 'capped by federal law', acip_vaccine_free: 'free by federal law' };
 
-const state = { county: '', drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false };
+const state = { county: '', countySource: null /* 'zip' | 'county' | 'link' */, drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false };
 const PHASES = [['0', 'Pre-deductible'], ['1', 'Initial coverage'], ['3', 'Catastrophic']];
 const DAYS = [['1', '30-day'], ['2', '90-day']];
 
@@ -74,7 +74,12 @@ async function init() {
     for (const c of counties) sel.append(el('option', { value: c.code, textContent: c.name }));
   } catch { $('#county').innerHTML = '<option>Could not load counties</option>'; }
 
-  $('#county').addEventListener('change', (e) => { state.county = e.target.value; refreshGo(); syncResults(); });
+  // Fallback path: choosing a county from the list confirms it, just like a ZIP would.
+  $('#county').addEventListener('change', (e) => {
+    if (!e.target.value) { setCounty('', null, null); renderZipStatus(null); return; }
+    confirmCounty(e.target.value, e.target.selectedOptions[0].textContent, 'county');
+  });
+  wireZip();
   wireAutocomplete();
   $('#go').addEventListener('click', runResults);
 
@@ -185,10 +190,111 @@ function renderChips() {
   }
 }
 
+// ---------- location (ZIP-first) ----------
+// A ZIP is input convenience; the COUNTY (SSA code) is the real state — it's what results and
+// share links use. Every path (ZIP resolve, county dropdown, restored link) funnels through
+// setCounty so the two inputs and the confirmation line never disagree.
+function setCounty(code, name, source) {
+  state.county = code || '';
+  state.countySource = code ? source : null;
+  const sel = $('#county');
+  if (sel) sel.value = (code && [...sel.options].some((o) => o.value === code)) ? code : '';
+  refreshGo();
+  syncResults();
+}
+
+// "St. Louis" -> "St. Louis County"; the independent city "St. Louis City" stays as-is.
+function countyLabel(name) {
+  if (!name) return '';
+  return /\bcity\b/i.test(name) ? `${name}, Missouri` : `${name} County, Missouri`;
+}
+
+function confirmCounty(code, name, source) {
+  setCounty(code, name, source);
+  renderZipStatus({ kind: 'confirmed', name });
+}
+
+function changeLocation() {
+  const z = $('#zip'); if (z) { z.value = ''; }
+  setCounty('', null, null);
+  renderZipStatus(null);
+  if (z) z.focus();
+}
+
+// The single place the confirmation / disambiguation / not-covered message is drawn.
+function renderZipStatus(p) {
+  const box = $('#zip-status'); if (!box) return;
+  box.innerHTML = ''; box.className = 'zip-status';
+  if (!p) return;
+
+  if (p.kind === 'loading') {
+    box.append(el('p', { className: 'muted small', textContent: 'Looking up your ZIP…' }));
+  } else if (p.kind === 'confirmed') {
+    box.classList.add('ok');
+    const line = el('div', { className: 'zip-confirm' });
+    const check = el('span', { className: 'ic' }); check.innerHTML = ICON.check;
+    line.append(check, el('span', { className: 'zip-place', textContent: countyLabel(p.name) }));
+    const change = el('button', { type: 'button', className: 'zip-change', textContent: 'Change' });
+    change.addEventListener('click', changeLocation);
+    line.append(change);
+    box.append(line);
+  } else if (p.kind === 'choose') {
+    box.classList.add('choose');
+    const n = p.counties.length;
+    box.append(el('p', { className: 'zip-ask', textContent: `This ZIP covers parts of ${n} counties — which is yours?` }));
+    const btns = el('div', { className: 'county-choices' });
+    for (const c of p.counties) {
+      const b = el('button', { type: 'button', className: 'county-choice', textContent: countyLabel(c.name) });
+      b.addEventListener('click', () => confirmCounty(c.code, c.name, 'zip'));
+      btns.append(b);
+    }
+    box.append(btns);
+  } else if (p.kind === 'notcovered') {
+    box.classList.add('warn');
+    box.append(el('p', {}, [
+      document.createTextNode('We don’t have plan data for that ZIP yet — PlanRobin currently covers '),
+      el('strong', { textContent: 'Missouri' }),
+      document.createTextNode('. If you’re in Missouri, you can also pick your county from the list below.'),
+    ]));
+    $('#county-fallback').open = true;
+  } else if (p.kind === 'error') {
+    box.classList.add('warn');
+    box.append(el('p', { className: 'small', textContent: 'We couldn’t look up that ZIP just now. You can pick your county from the list below instead.' }));
+    $('#county-fallback').open = true;
+  }
+}
+
+let zipSeq = 0;
+async function doResolveZip(zip) {
+  const mine = ++zipSeq;
+  renderZipStatus({ kind: 'loading' });
+  let r;
+  try { r = await getJSON('/api/zip?zip=' + encodeURIComponent(zip)); }
+  catch { if (mine === zipSeq) renderZipStatus({ kind: 'error' }); return; }
+  if (mine !== zipSeq) return; // a newer keystroke superseded this lookup
+  if (r.status === 'ok' && !r.multi) { confirmCounty(r.counties[0].code, r.counties[0].name, 'zip'); }
+  else if (r.status === 'ok') { setCounty('', null, null); renderZipStatus({ kind: 'choose', counties: r.counties }); }
+  else { setCounty('', null, null); renderZipStatus({ kind: 'notcovered' }); } // out_of_area / anything else
+}
+
+function wireZip() {
+  const zip = $('#zip'); if (!zip) return;
+  let timer = null;
+  zip.addEventListener('input', () => {
+    const digits = zip.value.replace(/\D/g, '').slice(0, 5);
+    if (digits !== zip.value) zip.value = digits; // numeric only, keeps the numeric keypad honest
+    // Editing the ZIP throws away a county that CAME FROM a ZIP; a county picked from the list stays.
+    if (state.countySource === 'zip' || state.countySource === 'link') setCounty('', null, null);
+    clearTimeout(timer);
+    if (digits.length === 5) timer = setTimeout(() => doResolveZip(digits), 250);
+    else renderZipStatus(null);
+  });
+}
+
 function refreshGo() {
   const ok = state.county && state.drugs.size >= 1;
   $('#go').disabled = !ok;
-  $('#go-hint').textContent = ok ? `${state.drugs.size} drug(s) · ready` : 'Pick a county and at least one drug.';
+  $('#go-hint').textContent = ok ? `${state.drugs.size} drug(s) · ready` : 'Enter your ZIP (or pick a county) and at least one drug.';
 }
 
 // Keep the results in sync with the current list. If results are already showing and the
@@ -507,8 +613,8 @@ async function maybeRestoreFromHash() {
   const dec = PRShare.decode(location.hash);
   if (!dec.ok) return;
   const sel = $('#county');
-  const countyInList = [...sel.options].some((o) => o.value === dec.county);
-  if (countyInList) { sel.value = dec.county; state.county = dec.county; }
+  const opt = [...sel.options].find((o) => o.value === dec.county);
+  if (opt) confirmCounty(dec.county, opt.textContent, 'link');
   for (const d of dec.drugs) {
     if (state.drugs.size >= 10) break;
     state.drugs.set(d.rxcui, { label: d.name || d.rxcui, kind: d.kind || 'drug', qty: d.qty });
@@ -518,8 +624,8 @@ async function maybeRestoreFromHash() {
   if (state.county && state.drugs.size >= 1) {
     runResults(); // reruns against CURRENT data; unresolved drugs show as "not covered"
   } else if (dec.drugs.length) {
-    // County didn't resolve — restore the list, say so plainly, let them pick a county.
-    $('#go-hint').textContent = 'Restored your medication list from a link — pick your county to see plans.';
+    // County didn't resolve — restore the list, say so plainly, let them enter their location.
+    $('#go-hint').textContent = 'Restored your medication list from a link — enter your ZIP or pick your county to see plans.';
   }
 }
 

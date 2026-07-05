@@ -31,7 +31,7 @@ async function main() {
   assert.strictEqual(db.kind, 'pglite', 'must run on embedded PGlite');
   try {
     await applyMigrations(db);
-    const ing = await ingestInto(db, { sourceDir: FIXTURES, quiet: true, quarter: '2026-Q1', sourceFile: 'SPUF_2026_20260408.zip' });
+    const ing = await ingestInto(db, { sourceDir: FIXTURES, crosswalkDir: FIXTURES, quiet: true, quarter: '2026-Q1', sourceFile: 'SPUF_2026_20260408.zip' });
     assert.strictEqual(ing.status, 'completed');
 
     console.log('Pricing ingests + coverage tracked:');

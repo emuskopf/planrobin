@@ -17,6 +17,15 @@ ingestion pipeline next session.
 | Quarterly Prescription Drug Plan Formulary, Pharmacy Network, and Pricing Information (PUF) — dataset page | CMS: <https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/quarterly-prescription-drug-plan-formulary-pharmacy-network-and-pricing-information> | 2026-07-01 (by user) |
 | 2026-Q1 direct download (the `SPUF_2026_20260408.zip` used by ingest — set as the `PUF_URL` for the ingest job) | CMS: <https://data.cms.gov/sites/default/files/2026-04/65e8dafd-c42b-4c2a-93c2-551bbc80bef9/SPUF_2026_20260408.zip> | 2026-04-08 (published) |
 | RxNorm REST API (drug name/dose → RXCUI) | NLM: <https://rxnav.nlm.nih.gov/REST/> | live calls |
+| ZIP → county crosswalk (with residential ratio) — US Census ZCTA-to-County Relationship File. `ZHUPCT` (share of a ZIP's housing units in each county) is the residential ratio we order disambiguation by. | Census: <https://www2.census.gov/geo/docs/maps-data/data/rel/zcta_county_rel_10.txt> | 2026-07-05 |
+| SSA ↔ FIPS county crosswalk (closes ZIP→FIPS→SSA→plan keying) | NBER: <https://data.nber.org/ssa-fips-state-county-crosswalk/> | 2026-07-05 |
+
+The crosswalks are filtered to Missouri and normalized to pipe-delimited files under
+`data/crosswalks/` (committed — public-domain, tiny, deterministic) by
+`node scripts/build_crosswalks.js`; ingest loads them from there. (The HUD-USPS ZIP crosswalk
+is the modern equivalent of the Census file but is now gated behind a HUD account/API token;
+the Census relationship file is the free authoritative substitute and carries the same
+housing-unit-based residential ratio.)
 
 **PUF set used:** plan year **2026, Q1 refresh**, inner file `SPUF_2026_20260408.zip`
 (published on/around 2026-04-08). A 2025-Q1 set (`SPUF_2025_20250410.zip`) is also on
@@ -214,10 +223,15 @@ DATABASE_URL='postgres://…' SOURCE_DIR=./puf npm run ingest
 - **Tools are pure SQL, no LLM,** and return structured objects (not strings) with the
   source `ingest_run_id` attached to every number. A drug not on formulary → `found:false`
   (never dropped); an unknown plan/county → a `NOT FOUND` result.
-- **County identity:** CMS ships **SSA** state/county codes, not FIPS. We store the SSA code
-  as the key; `counties.fips_code` is nullable and stays NULL until an SSA→FIPS crosswalk is
-  loaded. `get_plans_for_county` therefore accepts an SSA code or county name (the nominal
-  `county_fips` parameter is generalized rather than faking a crosswalk).
+- **County identity + ZIP resolution:** CMS ships **SSA** state/county codes, not FIPS. The
+  SSA code is still the key, but `counties.fips_code` is now **backfilled during ingest** from
+  the NBER SSA↔FIPS crosswalk, so `get_plans_for_county` honors a literal `county_fips` as well
+  as an SSA code or county name. On top of that, `zip_counties` (Census ZIP→county with a
+  residential ratio) lets the site take a **ZIP code** as the primary location input:
+  `resolveZip(zip)` / `GET /api/zip?zip=` returns the county (or, for a ZIP that straddles a
+  line, the counties ordered likeliest-first) — a valid ZIP we have no MO county for returns
+  `out_of_area` (honest "we only cover Missouri"), never an empty guess. The county dropdown
+  remains as a one-tap fallback.
 - **`star_rating` is a documented placeholder** (`null`) — star ratings are not in this PUF.
 
 ## Acceptance / regression test
