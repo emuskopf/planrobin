@@ -185,6 +185,20 @@ button.primary:disabled { background: #b7c0c4; color: #eef1f2; cursor: not-allow
 .annual .num.incomplete { color: var(--caution); }
 .annual .lbl { color: var(--ink-2); font-size: var(--fs-fine); }
 
+/* coverage partition — complete plans, then a divider, then partial plans */
+.partial-divider { margin: var(--sp-5) 0 var(--sp-3); padding: var(--sp-2) 0; border-top: 2px solid var(--line-2);
+  font-size: var(--fs-sm); font-weight: 700; color: var(--ink-2); text-transform: none; }
+.no-complete-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4); background: #fbecec; border: 1px solid #e6b8b8; border-radius: var(--radius);
+  font-size: var(--fs-sm); color: var(--ink); }
+.no-complete-note .ic { color: var(--notcov); flex: none; margin-top: 2px; }
+.plan.plan-partial { border-left: 4px solid var(--notcov); }
+.annual .num.partial { color: var(--ink-2); }
+.partial-flag { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--line); background: #fbecec; font-size: var(--fs-sm); color: var(--ink); }
+.partial-flag .ic { color: var(--notcov); flex: none; margin-top: 2px; }
+.partial-flag span { max-width: 66ch; }
+
 /* pharmacy-channel savings — calm, information-only line under the plan head */
 .savings { padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--line);
   background: var(--good-tint); }
@@ -337,6 +351,8 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-plan-name { font-weight: 700; font-size: 11pt; }
   .pp-plan-total { font-weight: 800; font-size: 13pt; white-space: nowrap; }
   .pp-plan-sub { font-size: 9pt; color: #333; margin: 1pt 0 3pt; }
+  .pp-plan.pp-plan-partial { border-left: 3pt solid #b00020; }
+  .pp-partial { font-size: 9pt; color: #b00020; font-weight: 600; margin: 2pt 0; }
   .pp-savings { font-size: 9.5pt; color: #146c3a; margin: 2pt 0; }
   .pp-drugs { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 3pt; }
   .pp-drugs td { border-top: 1px solid #ddd; padding: 2pt 4pt; vertical-align: top; }

@@ -105,6 +105,20 @@ async function main() {
     assert.strictEqual(mp.breakdown.deductibleExempt, false, 'a deductible-applicable drug -> not exempt');
     t('deductibleExempt true only when every covered drug is on a deductible-exempt tier');
 
+    console.log('\nPartial-coverage plans: suppressed savings + honest coverage (shared definition):');
+    const PRFormat = require('../site/format.js');
+    const partOut = await resultsHandler(db, { county: '26950', rxcuis: ['596934', '000000'] }); // 000000 not on formulary
+    const pp = partOut.body.plans.find((p) => p.planId === 'H4461-046');
+    assert.strictEqual(pp.notCovered, 1, 'one drug not covered -> partial plan');
+    assert.strictEqual(pp.savings, null, 'partial plan must NOT show a savings line as if comparable');
+    const cov = PRFormat.planCoverage(pp);
+    assert.strictEqual(cov.complete, false);
+    assert.strictEqual(cov.covered, 1);
+    assert.deepStrictEqual(cov.missing, ['000000']);
+    // The missing drug is named in the breakdown, never silently $0.
+    assert.deepStrictEqual(pp.breakdown.notCoveredRxcuis, ['000000']);
+    t('partial plan: savings suppressed, coverage flagged, missing drug named');
+
     console.log(`\nALL PRICING/QUANTITY TESTS PASSED (${passed}).`);
     await db.end();
   } catch (e) {

@@ -53,4 +53,33 @@ t('mail channel wording uses the mail location string', () => {
   assert.strictEqual(c.full, "Save about $120/year at this plan's mail-order pharmacy — bringing your total to about $180/yr.");
 });
 
+console.log('\nCoverage completeness (shared definition):');
+t('planCoverage: complete vs partial, with missing drugs named', () => {
+  const complete = { drugs: { '1': { covered: true }, '2': { covered: true } } };
+  assert.deepStrictEqual(F.planCoverage(complete), { total: 2, covered: 2, missing: [], complete: true });
+  const partial = { drugs: { '1': { covered: true }, '2': { covered: false } } };
+  const c = F.planCoverage(partial);
+  assert.strictEqual(c.complete, false);
+  assert.strictEqual(c.covered, 1);
+  assert.deepStrictEqual(c.missing, ['2']);
+});
+
+t('planRank: a $0 partial plan NEVER outranks a complete plan', () => {
+  const completePricey = { notCovered: 0, annualComplete: true, annualEstimate: 100 };
+  const partialFree = { notCovered: 1, annualComplete: true, annualEstimate: 0 };
+  assert.strictEqual([partialFree, completePricey].sort(F.planRank)[0], completePricey);
+  // within the complete group, cheaper first; within partial group, cheaper first
+  const c0 = { notCovered: 0, annualComplete: true, annualEstimate: 0 };
+  const c5 = { notCovered: 0, annualComplete: true, annualEstimate: 5 };
+  const p0 = { notCovered: 2, annualComplete: true, annualEstimate: 0 };
+  const sorted = [c5, p0, c0, completePricey].sort(F.planRank);
+  assert.deepStrictEqual(sorted.map((x) => x.annualEstimate + '/' + x.notCovered), ['0/0', '5/0', '100/0', '0/2']);
+});
+
+t('planRank: within the partial group, covering MORE drugs beats a cheaper-but-emptier plan', () => {
+  const covers1 = { notCovered: 1, annualComplete: true, annualEstimate: 83 };  // covers 1 of 2, $83
+  const covers0 = { notCovered: 2, annualComplete: true, annualEstimate: 0 };   // covers 0 of 2, $0
+  assert.strictEqual([covers0, covers1].sort(F.planRank)[0], covers1); // the $0 empty plan must not lead
+});
+
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

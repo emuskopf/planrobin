@@ -258,7 +258,21 @@ function renderResults(data) {
   box.append(el('div', { className: 'formula', textContent: data.formula }));
   box.append(renderKey());
 
-  for (const p of data.plans) box.append(renderPlan(p));
+  // Partitioned display: plans covering ALL your drugs first, then a divider, then the rest.
+  // data.plans is already sorted complete-first by the API (PRFormat.planRank).
+  const complete = data.plans.filter((p) => p.notCovered === 0);
+  const partial = data.plans.filter((p) => p.notCovered > 0);
+  if (complete.length === 0) {
+    box.append(el('div', { className: 'no-complete-note' }, [
+      ic('cross'),
+      el('span', { textContent: `No plan in ${data.county.name} covers all ${state.drugs.size} of these medications. Every plan below is missing at least one — each shows which.` }),
+    ]));
+  }
+  for (const p of complete) box.append(renderPlan(p));
+  if (partial.length) {
+    box.append(el('div', { className: 'partial-divider', textContent: 'These plans don’t cover all of your medications' }));
+    for (const p of partial) box.append(renderPlan(p));
+  }
 }
 
 // Coverage at a glance: how many plans cover ALL your drugs, and per drug how many cover it.
@@ -305,14 +319,23 @@ const planTypeSlug = (label) => (label && label.startsWith('PDP')) ? 'pdp' : 'ma
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 function renderPlan(p) {
-  // When a savings line fires, the anchor is the standard-pharmacy figure — say so, so the pair
-  // reads as a matched set. Plans with no savings keep the plain label. Whole dollars; the number
-  // equals the breakdown's displayed total (both from PRFormat.planDisplayTotal).
-  const baseLbl = p.annualComplete ? 'est. per year' : 'est. per year so far';
-  const annual = el('div', { className: 'annual' }, [
-    el('div', { className: 'num' + (p.annualComplete ? '' : ' incomplete'), textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) }),
-    el('div', { className: 'lbl', textContent: p.savings ? baseLbl + ' at standard pharmacies' : baseLbl }),
-  ]);
+  const cov = PRFormat.planCoverage(p);
+  // Anchor. Complete plans: whole-dollar total + "est. per year" (with the standard-pharmacy
+  // qualifier when a savings line fires). Partial plans: the total is for the covered drugs only,
+  // so it's labeled that way — never a bare "$0 est. per year" that hides missing coverage.
+  let annual;
+  if (!cov.complete) {
+    annual = el('div', { className: 'annual' }, [
+      el('div', { className: 'num partial', textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) }),
+      el('div', { className: 'lbl', textContent: `est. per year · covers ${cov.covered} of your ${cov.total} meds` }),
+    ]);
+  } else {
+    const baseLbl = p.annualComplete ? 'est. per year' : 'est. per year so far';
+    annual = el('div', { className: 'annual' }, [
+      el('div', { className: 'num' + (p.annualComplete ? '' : ' incomplete'), textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) }),
+      el('div', { className: 'lbl', textContent: p.savings ? baseLbl + ' at standard pharmacies' : baseLbl }),
+    ]);
+  }
   const head = el('div', { className: 'plan-head' }, [
     el('div', {}, [
       el('div', { className: 'plan-name', textContent: p.planName }),
@@ -326,8 +349,15 @@ function renderPlan(p) {
     ]),
     annual,
   ]);
-  const card = el('div', { className: 'plan' }, [head]);
-  const sav = renderSavings(p);
+  const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') }, [head]);
+  // Loud partial-coverage flag — names the missing drug(s), never silent.
+  if (!cov.complete) {
+    const names = cov.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
+    const flag = el('div', { className: 'partial-flag' });
+    flag.append(ic('cross'), el('span', { textContent: `Doesn’t cover: ${names} — you’d pay full price out of pocket, and it wouldn’t count toward the plan’s ${PRFormat.dollars(p.oopCap || 2100)} cap.` }));
+    card.append(flag);
+  }
+  const sav = renderSavings(p); // null on partial plans (API suppresses it)
   if (sav) card.append(sav);
   card.append(renderBreakdown(p));
   for (const [rxcui, meta] of state.drugs) card.append(renderDrugRow(rxcui, meta, p.drugs[rxcui]));
@@ -539,12 +569,17 @@ function buildQR(text) {
 }
 
 function buildPassportPlan(p) {
-  const card = el('div', { className: 'pp-plan' });
+  const cov = PRFormat.planCoverage(p);
+  const card = el('div', { className: 'pp-plan' + (cov.complete ? '' : ' pp-plan-partial') });
   card.append(el('div', { className: 'pp-plan-head' }, [
     el('div', { className: 'pp-plan-name', textContent: p.planName }),
-    el('div', { className: 'pp-plan-total', textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (p.annualComplete ? '' : ' so far') }),
+    el('div', { className: 'pp-plan-total', textContent: PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (cov.complete ? (p.annualComplete ? '' : ' so far') : ` · for ${cov.covered} of ${cov.total}`) }),
   ]));
   card.append(el('div', { className: 'pp-plan-sub', textContent: `${p.planType} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}` }));
+  if (!cov.complete) {
+    const names = cov.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
+    card.append(el('div', { className: 'pp-partial', textContent: `Doesn't cover: ${names} — full price out of pocket, and not counted toward the ${PRFormat.dollars(p.oopCap || 2100)} cap.` }));
+  }
   if (p.savings) {
     const c = PRFormat.savingsCopy(p, SAVINGS_LOC[p.savings.channel] || "this plan's preferred pharmacies");
     card.append(el('div', { className: 'pp-savings', textContent: 'Save about ' + c.amount + c.tail }));
@@ -592,13 +627,17 @@ function buildPassport(data) {
   // medications would leave you paying full price for it, so it isn't shown as a "top" plan —
   // this is the same ranking the on-screen results use, made explicit so the numbers aren't a
   // surprise next to the $0 partial-coverage plans lower in the list.
-  const coveringAll = data.plans.filter((p) => p.notCovered === 0);
-  const top = (coveringAll.length ? coveringAll : data.plans).slice(0, 5);
+  // Top plans come from the COMPLETE group; only if fewer than 3 cover everything do partial
+  // plans appear (each with its own flag), so the passport never leads with a plan that silently
+  // skips a drug. Same coverage definition as the on-screen results (PRFormat.planCoverage).
+  const complete = data.plans.filter((p) => p.notCovered === 0);
+  const partial = data.plans.filter((p) => p.notCovered > 0);
+  const top = (complete.length >= 3 ? complete : [...complete, ...partial]).slice(0, 5);
   const nDrugs = state.drugs.size;
-  p1.append(el('div', { className: 'pp-coverage', textContent: coveringAll.length
-    ? `${coveringAll.length} of ${data.planCount} plans cover ${nDrugs === 1 ? 'your medication' : `all ${nDrugs} of your medications`}. The plans below are ranked by yearly cost among those. A plan that skips one of your drugs would leave you paying full price for it, so it isn’t shown here even if it looks cheaper.`
-    : `No plan in ${data.county.name} covers every medication on your list. The plans below cover the most, ranked by yearly cost; each drug’s coverage is shown per plan.` }));
-  p1.append(el('h2', { className: 'pp-h', textContent: coveringAll.length
+  p1.append(el('div', { className: 'pp-coverage', textContent: complete.length
+    ? `${complete.length} of ${data.planCount} plans cover ${nDrugs === 1 ? 'your medication' : `all ${nDrugs} of your medications`}. The plans below are ranked by yearly cost among those. A plan that skips one of your drugs would leave you paying full price for it, so it isn’t shown as a top plan even if it looks cheaper.`
+    : `No plan in ${data.county.name} covers every medication on your list. The plans below cover the most, ranked by yearly cost; each plan flags what it misses.` }));
+  p1.append(el('h2', { className: 'pp-h', textContent: complete.length
     ? `Top ${top.length} plans that cover all your medications, by yearly cost`
     : `Top ${top.length} plans by coverage, then yearly cost` }));
   for (const p of top) p1.append(buildPassportPlan(p));

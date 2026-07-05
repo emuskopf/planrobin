@@ -39,7 +39,30 @@
     };
   }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy };
+  // ---- Coverage completeness — ONE definition, shared by results, sort, savings, and passport ----
+  // A plan is "complete" only if it covers EVERY drug in the basket. Missing drugs are named, and a
+  // missing drug is never totaled as $0 — it just isn't on the plan.
+  function planCoverage(plan) {
+    const drugs = (plan && plan.drugs) || {};
+    const rxs = Object.keys(drugs);
+    const missing = rxs.filter((rx) => !(drugs[rx] && drugs[rx].covered));
+    return { total: rxs.length, covered: rxs.length - missing.length, missing, complete: missing.length === 0 };
+  }
+
+  // Ranking comparator: plans covering ALL basket drugs rank first (a partial plan can NEVER
+  // outrank a complete one, regardless of price). Within the partial group, plans covering MORE of
+  // your drugs rank higher — so a plan that's only "cheap" because it skips a drug can't float to
+  // the top there either. Then fully-priced before incomplete, then by total. Used by the API sort
+  // AND asserted in tests, so screen/print can't disagree.
+  function planRank(a, b) {
+    const ac = a.notCovered === 0, bc = b.notCovered === 0;
+    if (ac !== bc) return ac ? -1 : 1;
+    return (a.notCovered - b.notCovered)
+      || ((a.annualComplete ? 0 : 1) - (b.annualComplete ? 0 : 1))
+      || (a.annualEstimate - b.annualEstimate);
+  }
+
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);
