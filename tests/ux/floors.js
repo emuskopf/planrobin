@@ -54,14 +54,19 @@ function inPageAudit(opts) {
     if (overflowExempt.some((s) => desc(s, el))) continue;
     const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
-    // (a) an element pushed partly off the right edge (positioned/laid-out overflow)
-    if (r.right > iw + 1 && r.left >= 0 && r.width <= iw + 1) {
+    // (a) an element pushed partly off the right edge (positioned/laid-out overflow). 2px tolerance
+    // absorbs sub-pixel font rounding that differs between OS font stacks.
+    if (r.right > iw + 2 && r.left >= 0 && r.width <= iw + 1) {
       V.overflow.push({ el: label(el), detail: `right edge ${Math.round(r.right)} > viewport ${iw}` });
     }
     // (b) content overflowing an UNCLIPPED box (a long word/token that won't wrap) — the kind that
-    // pushes the document wider. Clipped scrollers (overflow-x:auto, selects) don't count.
-    else if (cs.overflowX === 'visible' && el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0 && el.scrollWidth > iw + 1) {
-      V.overflow.push({ el: label(el), detail: `content ${el.scrollWidth}px overflows ${el.clientWidth}px box (won't wrap)` });
+    // pushes the document wider. Clipped scrollers (overflow-x:auto), form controls (select/input,
+    // which clip their own text), and non-leaf containers are skipped so we name the actual leaf.
+    else if (cs.overflowX === 'visible' && el.scrollWidth > el.clientWidth + 2 && el.clientWidth > 0 && el.scrollWidth > iw + 1
+             && !/^(select|input|textarea)$/.test(el.tagName.toLowerCase())) {
+      // only report the deepest offender: skip if a child element also overflows its own box
+      const childOverflows = [...el.children].some((c) => { const ccs = getComputedStyle(c); return ccs.overflowX === 'visible' && c.scrollWidth > c.clientWidth + 2 && c.clientWidth > 0; });
+      if (!childOverflows) V.overflow.push({ el: label(el), detail: `content ${el.scrollWidth}px overflows ${el.clientWidth}px box (won't wrap)` });
     }
   }
   // Fallback: the document is wider than the viewport but nothing above named it.
