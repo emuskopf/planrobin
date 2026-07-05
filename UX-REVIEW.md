@@ -121,6 +121,11 @@ hand too because a mechanism can reappear in a new component:
    90-day = 3× retail → one footnote) and keep the grid for wide screens / print. An allow-listed
    scroll container is licensed to *scroll*, not to crush — the floor suite now asserts no table cell
    is narrower than its own longest word. *(v=22 phase/channel detail; `PRFormat.phaseSummary`.)*
+9. **Primary actions must not assume hardware or configuration the audience may lack.** "Print"
+   assumes a configured printer — most of our audience's phones have none (Android Chrome even showed
+   a blank print preview). Offer the FILE: a saveable, textable, showable, print-anywhere-later PDF.
+   Feature-detect capabilities (`navigator.canShare({files})`) and degrade gracefully; keep Print
+   where it works (wide screens), demoted. *(v=23 Plan Passport PDF.)*
 
 ---
 
