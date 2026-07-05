@@ -116,7 +116,7 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
   padding: var(--sp-3) var(--sp-4); background: var(--good-tint); border: 1px solid var(--good);
   border-radius: var(--radius); color: var(--ink); }
 .zip-confirm .ic { color: var(--good); display: inline-flex; flex: none; }
-.zip-place { font-weight: 600; }
+.zip-place { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .zip-change { min-height: 0; width: auto; margin-left: auto; padding: 6px var(--sp-3); font-size: var(--fs-sm);
   font-weight: 600; color: var(--accent); background: transparent; border: 1px solid var(--line-2); border-radius: var(--radius-sm); cursor: pointer; }
 .zip-change:hover { border-color: var(--accent); color: var(--accent-2); }
@@ -150,11 +150,13 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
   cursor: pointer; border-bottom: 1px solid var(--line); }
 .suggestions li:last-child { border-bottom: 0; }
 .suggestions li[role=option]:hover, .suggestions li.active { background: var(--accent-tint); }
-.suggestions .nm { flex: 1; }
+/* Long RxNorm names wrap instead of shoving the badge out of the row (same v=16 mechanism). */
+.suggestions li { align-items: flex-start; }
+.suggestions .nm { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .suggestions li.active { outline: 2px solid var(--focus); outline-offset: -2px; }
 .sugg-note { color: var(--ink-2); font-size: var(--fs-sm); cursor: default; }
 .sugg-note.error { color: var(--notcov); }
-.badge { font-size: var(--fs-fine); font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.badge { flex: none; font-size: var(--fs-fine); font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .badge.generic { background: var(--good-tint); color: var(--good); }
 .badge.brand { background: #eef2f7; color: #3a4b63; }
 .badge.nocover { background: var(--caution-tint); color: var(--caution); }
@@ -162,8 +164,15 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 
 /* chips */
 .chips { list-style: none; padding: 0; margin: var(--sp-4) 0 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+/* Modest fixed radius (card token), NOT a pill — a tall wrapped chip can never balloon into an oval,
+   and max-width keeps it inside the card. */
 .chips li { display: flex; align-items: center; gap: var(--sp-2); background: var(--surface-2); border: 1px solid var(--line-2);
-  border-radius: 999px; padding: 6px 6px 6px var(--sp-4); font-size: var(--fs-sm); }
+  border-radius: var(--radius); padding: 6px 6px 6px var(--sp-4); font-size: var(--fs-sm); max-width: 100%; }
+/* identity = name (+ generic/brand badge); min-width:0 so the name wraps naturally instead of
+   crushing to one word per line when the fixed controls refuse to yield (the v=16 mechanism). */
+.chip-id { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; flex: 1 1 auto; }
+.chip-name { min-width: 0; overflow-wrap: anywhere; }
+.chip-controls { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .chips button { flex: none; width: 32px; height: 32px; border: 0; background: #e6e2d8; color: var(--ink); border-radius: 999px;
   cursor: pointer; font-size: 18px; line-height: 1; }
 .chips button:hover { background: var(--line-2); }
@@ -350,6 +359,11 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .bd-label { min-width: 0; }
   /* Phase/channel table can be wider than a phone — scroll it instead of crushing the cells. */
   .detail-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Medication chips: one per row, then stack inside — name (+ badge) on top wrapping full width,
+     quantity + remove beneath, right-aligned. No fixed control ever crushes the name. */
+  .chips { flex-direction: column; align-items: stretch; }
+  .chips li { flex-direction: column; align-items: stretch; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+  .chip-controls { justify-content: flex-end; }
 }
 
 /* ---------- share bar (screen) ---------- */
