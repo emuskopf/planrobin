@@ -213,6 +213,7 @@ details.breakdown > summary { font-size: var(--fs-sm); }
 .bd-notcov .bd-note { text-align: left; }
 .bd-notcov .ic { color: var(--notcov); }
 .bd-cap .bd-note { text-align: left; color: var(--accent); }
+.bd-ded .bd-note { text-align: left; }
 .bd-total { border-top: 2px solid var(--line-2); margin-top: var(--sp-1); padding-top: var(--sp-3); }
 .bd-total .bd-label { font-weight: 700; }
 .bd-total .bd-val { font-size: var(--fs-md); }

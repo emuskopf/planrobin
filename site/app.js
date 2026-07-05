@@ -33,7 +33,7 @@ const TERMS = {
   'standard-retail': 'Any in-network pharmacy.',
   'preferred-retail': 'Specific pharmacies the plan picks as lower-cost.',
   'preferred-mail': 'The plan’s mail-order pharmacy — often the cheapest, especially for 90-day fills.',
-  'preferred-pharmacy': 'A pharmacy this plan has negotiated lower copays with. Most big chains are “preferred” on some plans and “standard” on others — it depends on the plan, not just the pharmacy.',
+  'preferred-pharmacy': 'A pharmacy this plan has negotiated lower copays with. Most pharmacy chains are “preferred” on some plans and “standard” on others — it depends on the plan, not just the pharmacy.',
   'days-supply': 'How many days each fill covers. At a regular pharmacy a 90-day fill usually costs 3× the 30-day copay — the real 90-day savings come from mail order.',
   // Plan types
   'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare.',
@@ -287,9 +287,12 @@ const planTypeSlug = (label) => (label && label.startsWith('PDP')) ? 'pdp' : 'ma
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 function renderPlan(p) {
+  // When a savings line fires, the anchor is the standard-pharmacy figure — say so, so the pair
+  // reads as a matched set. Plans with no savings keep the plain label.
+  const baseLbl = p.annualComplete ? 'est. per year' : 'est. per year so far';
   const annual = el('div', { className: 'annual' }, [
     el('div', { className: 'num' + (p.annualComplete ? '' : ' incomplete'), textContent: money(p.annualEstimate) }),
-    el('div', { className: 'lbl', textContent: p.annualComplete ? 'est. per year' : 'est. per year so far' }),
+    el('div', { className: 'lbl', textContent: p.savings ? baseLbl + ' at standard pharmacies' : baseLbl }),
   ]);
   const head = el('div', { className: 'plan-head' }, [
     el('div', {}, [
@@ -366,6 +369,14 @@ function renderBreakdown(p) {
     rows.append(r);
   }
 
+  // Deductible exemption — the plan has a deductible, but the user's drugs are on tiers it skips.
+  if (b.deductibleExempt) {
+    const ded = '$' + Number(b.deductibleAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    rows.append(el('div', { className: 'bd-line bd-ded' }, [
+      el('span', { className: 'bd-note', textContent: `This plan's ${ded} deductible doesn't apply to your medications — they're on tiers the deductible skips.` }),
+    ]));
+  }
+
   // Cap milestone, where it binds.
   if (b.capHit && b.capHit.reached && b.capHit.month) {
     rows.append(el('div', { className: 'bd-line bd-cap' }, [
@@ -388,13 +399,19 @@ function renderBreakdown(p) {
 function renderSavings(p) {
   const s = p.savings;
   if (!s) return null;
+  const LOC = {
+    preferredRetail: "this plan's preferred pharmacies",
+    standardMail: "this plan's mail-order pharmacy",
+    preferredMail: "this plan's preferred mail-order pharmacy",
+  };
+  const loc = LOC[s.channel] || "this plan's preferred pharmacies";
   const wrap = el('div', { className: 'savings' });
   const line = el('div', { className: 'savings-line' }, [
     ic('save'),
     el('span', {}, [
       document.createTextNode('Save about '),
       el('strong', { textContent: '$' + Number(s.displayAmount).toLocaleString() + '/year' }),
-      document.createTextNode(' on this same plan ' + s.phrase + '.'),
+      document.createTextNode(' at ' + loc + ' — about ' + money(s.channelTotal) + '/yr.'),
     ]),
   ]);
   wrap.append(line);

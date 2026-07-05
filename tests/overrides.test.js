@@ -163,6 +163,9 @@ t('savings: real preferred/standard differential -> saving on the cheaper channe
   assert.strictEqual(s.channel, 'preferredRetail');
   assert.strictEqual(s.amount, 72);
   assert.strictEqual(s.channelLabel, 'preferred pharmacy');
+  // The savings-pair copy needs both totals: anchor (standard) and the recomputed channel total.
+  assert.strictEqual(s.anchorTotal, 360);   // premium 240 + std drug OOP 120
+  assert.strictEqual(s.channelTotal, 288);  // premium 240 + preferred drug OOP 48
 });
 
 t('savings: plan with NO differential -> null (show nothing, not "$0 savings")', () => {

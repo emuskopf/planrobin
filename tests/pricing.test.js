@@ -92,6 +92,19 @@ async function main() {
     assert.strictEqual(m0p.breakdown.total, m0p.breakdown.premiumAnnual + m0p.breakdown.copayAnnual);
     t('duloxetine-only basket: complete, no coinsurance lines, total = premium + copays');
 
+    console.log('\nDeductible-exemption flag (nonzero deductible, all covered drugs on exempt tiers):');
+    // H4461-046 has a $615 deductible; duloxetine is tier 2, which the deductible skips (ded_applies=N).
+    const exemptOut = await resultsHandler(db, { county: '26950', rxcuis: ['596934', '596930'] });
+    const ep = exemptOut.body.plans.find((p) => p.planId === 'H4461-046');
+    assert.strictEqual(ep.deductible, 615);
+    assert.strictEqual(ep.breakdown.deductibleAmount, 615);
+    assert.strictEqual(ep.breakdown.deductibleExempt, true, 'all-exempt basket + nonzero deductible -> exempt');
+    // Add a tier-4 drug (ded_applies=Y) and the deductible is no longer exempt.
+    const mixedOut = await resultsHandler(db, { county: '26950', rxcuis: ['596934', '9990001'] });
+    const mp = mixedOut.body.plans.find((p) => p.planId === 'H4461-046');
+    assert.strictEqual(mp.breakdown.deductibleExempt, false, 'a deductible-applicable drug -> not exempt');
+    t('deductibleExempt true only when every covered drug is on a deductible-exempt tier');
+
     console.log(`\nALL PRICING/QUANTITY TESTS PASSED (${passed}).`);
     await db.end();
   } catch (e) {
