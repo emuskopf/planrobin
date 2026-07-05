@@ -8,6 +8,14 @@ const H = require('./harness');
 const VIEWPORTS = [360, 412];
 const FONTS = [{ name: 'default', scale: 1 }, { name: '200%', scale: 2 }];
 
+// On failure, attach a full-page screenshot (the on-failure viewport shot lands wherever focus
+// traversal left the scroll) so overflow at the top of the page is actually visible in the report.
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    try { await page.evaluate(() => window.scrollTo(0, 0)); await testInfo.attach('fullpage', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' }); } catch {}
+  }
+});
+
 // Each state drives the page into a named condition. `results` picks the /api/results fixture.
 const STATES = [
   { name: 'entry-empty', async setup(page) { await page.goto('/'); } },
