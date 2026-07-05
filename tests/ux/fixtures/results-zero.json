@@ -28,6 +28,7 @@
  "plans": [
   {
    "planId": "H2041-001",
+   "segmentId": "000",
    "planName": "DEVOTED CORE 001 MO (HMO)",
    "planType": "MA-PD",
    "premium": 0,
@@ -791,6 +792,7 @@
   },
   {
    "planId": "H4461-044",
+   "segmentId": "000",
    "planName": "Humana Gold Plus SNP-DE H4461-044 (HMO-POS D-SNP)",
    "planType": "MA-PD",
    "premium": 0,
@@ -1430,6 +1432,7 @@
   },
   {
    "planId": "H5325-005",
+   "segmentId": "000",
    "planName": "Aetna Medicare Dual (HMO D-SNP)",
    "planType": "MA-PD",
    "premium": 0,
@@ -2193,6 +2196,7 @@
   },
   {
    "planId": "H5325-014",
+   "segmentId": "000",
    "planName": "Aetna Medicare Full Dual (HMO D-SNP)",
    "planType": "MA-PD",
    "premium": 0,
@@ -2956,6 +2960,7 @@
   },
   {
    "planId": "H3447-018",
+   "segmentId": "000",
    "planName": "Anthem Full Dual Advantage (HMO D-SNP)",
    "planType": "MA-PD",
    "premium": 0,
@@ -3538,6 +3543,7 @@
   },
   {
    "planId": "H3447-053",
+   "segmentId": "000",
    "planName": "Anthem Full Dual Advantage 2 (HMO D-SNP)",
    "planType": "MA-PD",
    "premium": 0,
@@ -4120,6 +4126,7 @@
   },
   {
    "planId": "H9191-004",
+   "segmentId": "000",
    "planName": "Provider Partners Missouri Community Plan (HMO I-SNP)",
    "planType": "MA-PD",
    "premium": 0,
@@ -4702,6 +4709,7 @@
   },
   {
    "planId": "H4172-003",
+   "segmentId": "000",
    "planName": "Senior Care (HMO I-SNP)",
    "planType": "MA-PD",
    "premium": 0,

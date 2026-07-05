@@ -62,7 +62,23 @@
       || (a.annualEstimate - b.annualEstimate);
   }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank };
+  // ---- CMS plan ID for display — the government identity printed on the member's card ----
+  // plan.planId is CONTRACT-PLAN (e.g. "H2228-042"). The segment suffix is reference noise for the
+  // reader, so we show it ONLY when two displayed plans share the same contract-plan and would
+  // otherwise be indistinguishable. ambiguousPlanIds(plans) returns that set. Shared by the results
+  // header and the printed Passport so both read the same ID off the card.
+  function ambiguousPlanIds(plans) {
+    const counts = {};
+    for (const p of (plans || [])) counts[p.planId] = (counts[p.planId] || 0) + 1;
+    return new Set(Object.keys(counts).filter((id) => counts[id] > 1));
+  }
+  function planDisplayId(plan, ambiguous) {
+    const base = plan.planId;
+    const needSeg = ambiguous && (ambiguous.has ? ambiguous.has(base) : ambiguous[base]);
+    return needSeg && plan.segmentId != null ? base + '-' + plan.segmentId : base;
+  }
+
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);
