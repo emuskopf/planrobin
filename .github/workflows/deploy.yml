@@ -32,6 +32,16 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:ux
+      - name: Upload UX report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ux-report
+          path: |
+            tests/ux/report
+            test-results
+          retention-days: 7
+          if-no-files-found: ignore
 
       # Second gate: exercise the batched results query through the SAME driver the Workers runtime
       # uses (postgres.js) against live Supabase. Blocks the deploy if a DB/driver issue would 500

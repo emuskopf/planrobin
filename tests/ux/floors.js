@@ -32,6 +32,9 @@ function inPageAudit(opts) {
   const vis = (el) => {
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) === 0) return false;
+    // Content inside a COLLAPSED <details> is not visible to the user — but recent Chromium keeps a
+    // layout box for it (content-visibility), so exclude it explicitly from every geometry check.
+    if (el.closest('details:not([open])')) return false;
     const r = el.getBoundingClientRect();
     return r.width >= 1 && r.height >= 1;
   };
@@ -45,17 +48,25 @@ function inPageAudit(opts) {
 
   // ---- Rule 2: no horizontal overflow ----
   const iw = document.documentElement.clientWidth;
-  if (document.documentElement.scrollWidth > iw + 1) {
-    V.overflow.push({ el: 'document', detail: `scrollWidth ${document.documentElement.scrollWidth} > clientWidth ${iw}` });
-  }
+  const docOver = document.documentElement.scrollWidth > iw + 1;
   for (const el of document.querySelectorAll('body *')) {
     if (!vis(el)) continue;
     if (overflowExempt.some((s) => desc(s, el))) continue;
+    const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
+    // (a) an element pushed partly off the right edge (positioned/laid-out overflow)
     if (r.right > iw + 1 && r.left >= 0 && r.width <= iw + 1) {
-      // an element pushed partly off the right edge (not one that's just wider than the screen)
       V.overflow.push({ el: label(el), detail: `right edge ${Math.round(r.right)} > viewport ${iw}` });
     }
+    // (b) content overflowing an UNCLIPPED box (a long word/token that won't wrap) — the kind that
+    // pushes the document wider. Clipped scrollers (overflow-x:auto, selects) don't count.
+    else if (cs.overflowX === 'visible' && el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0 && el.scrollWidth > iw + 1) {
+      V.overflow.push({ el: label(el), detail: `content ${el.scrollWidth}px overflows ${el.clientWidth}px box (won't wrap)` });
+    }
+  }
+  // Fallback: the document is wider than the viewport but nothing above named it.
+  if (docOver && V.overflow.length === 0) {
+    V.overflow.push({ el: 'document', detail: `scrollWidth ${document.documentElement.scrollWidth} > clientWidth ${iw}` });
   }
 
   // ---- Rule 1: no two text-bearing boxes overlap ----
