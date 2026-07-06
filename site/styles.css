@@ -104,7 +104,7 @@ a:focus-visible { outline-offset: 3px; }
 .brand { display: inline-flex; align-items: center; gap: var(--sp-3); color: var(--ink); text-decoration: none; }
 .brand:hover { color: var(--ink); }
 .brand:hover .wordmark { text-decoration: none; }
-.brand-robin { flex: none; width: 44px; height: 44px; object-fit: contain; }
+.brand-robin { flex: none; width: 54px; height: 54px; object-fit: contain; }
 .brand-lockup { display: inline-flex; flex-direction: column; justify-content: center; gap: 1px; }
 /* Wordmark stays one line normally; at big font/zoom it breaks cleanly at the <wbr> between the two
    words (Plan / Robin) rather than overflowing. `anywhere` guarantees it can never force overflow. */
@@ -113,11 +113,13 @@ a:focus-visible { outline-offset: 3px; }
 .wordmark .wm-robin { color: var(--brand-orange); }
 .brand-tagline { font-size: var(--fs-fine); color: var(--ink-2); line-height: 1.2; }
 .beta { font-size: var(--fs-fine); color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
-/* Narrow screens: drop the tagline and shrink the robin so the lockup stays on one crisp line.
-   The wordmark stays at --fs-lg (28px): "Robin" is brand orange (~3.86:1 on cream), which only clears
-   WCAG as LARGE text (≥24px → 3:1). Never shrink it below 24px or the contrast floor fails. */
+/* Narrow screens: drop the tagline and ease the robin down slightly (still big) so the lockup stays
+   on one crisp line. The robin is a fixed-px image, so it never grows at 200% zoom — the wordmark is
+   what could overflow, and it breaks cleanly at its <wbr>. The wordmark stays at --fs-lg (28px):
+   "Robin" is brand orange (~3.86:1 on cream), which only clears WCAG as LARGE text (≥24px → 3:1).
+   Never shrink it below 24px or the contrast floor fails. */
 @media (max-width: 380px) {
-  .brand-robin { width: 36px; height: 36px; }
+  .brand-robin { width: 50px; height: 50px; }
   .brand-tagline { display: none; }
 }
 
