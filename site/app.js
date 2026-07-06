@@ -803,7 +803,8 @@ function renderPassportDom(model) {
     else if (it.type === 'caveat') listIn(page, 'pp-caveats').append(el('li', { textContent: it.text }));
     else if (it.type === 'h3') { const sh = el('div', { className: 'pp-share' }); sh.append(el('h3', { className: 'pp-h3', textContent: it.text })); const cols = el('div', { className: 'pp-share-cols' }); const left = el('div', {}); cols.append(left); sh.append(cols); page.append(sh); page._share = { cols, left }; }
     else if (it.type === 'note') page._share.left.append(el('p', { className: 'pp-note', textContent: it.text }));
-    else if (it.type === 'url') page._share.left.append(el('p', { className: 'pp-url', textContent: it.text }));
+    else if (it.type === 'path') page._share.left.append(el('div', { className: 'pp-path' }, [el('span', { className: 'pp-path-icon', 'aria-hidden': 'true', textContent: it.icon }), el('span', { className: 'pp-path-text', textContent: it.text })]));
+    else if (it.type === 'url') page._share.left.append(el('a', { className: 'pp-url', href: it.link || it.text, textContent: it.text }));
     else if (it.type === 'qr') { const q = buildQR(it.url); if (q) page._share.cols.append(el('div', { className: 'pp-qr-wrap' }, [q])); }
   }
   flushHead();
@@ -820,7 +821,7 @@ async function renderPassportPdf(model) {
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const W = 612, H = 792, M = 54, maxW = W - 2 * M;
-  const c = { ink: rgb(0.11, 0.15, 0.2), gray: rgb(0.3, 0.3, 0.32), green: rgb(0.08, 0.42, 0.23), red: rgb(0.69, 0, 0.13), line: rgb(0.8, 0.79, 0.75) };
+  const c = { ink: rgb(0.11, 0.15, 0.2), gray: rgb(0.3, 0.3, 0.32), green: rgb(0.08, 0.42, 0.23), red: rgb(0.69, 0, 0.13), line: rgb(0.8, 0.79, 0.75), link: rgb(0.05, 0.35, 0.72) };
   let page = pdf.addPage([W, H]); let y = H - M;
   const drawn = [];
 
@@ -854,6 +855,26 @@ async function renderPassportPdf(model) {
     for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (qr.isDark(r, col)) page.drawRectangle({ x: M + col * cell, y: y + box - (r + 1) * cell, width: cell, height: cell, color: rgb(0, 0, 0) });
     y -= 8;
   };
+  // A real clickable URI link annotation over the drawn text rect (selectable + tappable in viewers).
+  const addLink = (rect, uri) => {
+    const { PDFName, PDFString } = window.PDFLib;
+    const annot = pdf.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: rect, Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: PDFString.of(uri) } });
+    const ref = pdf.context.register(annot);
+    const annots = page.node.Annots() || pdf.context.obj([]);
+    annots.push(ref); page.node.set(PDFName.of('Annots'), annots);
+  };
+  const linkText = (url, uri) => {
+    drawn.push(String(url));
+    const size = 9, lh = size * 1.4;
+    for (const ln of wrap(url, font, size, maxW)) {
+      need(lh); y -= lh;
+      const baseline = y + lh * 0.28, w = font.widthOfTextAtSize(ln, size);
+      page.drawText(ln, { x: M, y: baseline, size, font, color: c.link });
+      page.drawLine({ start: { x: M, y: baseline - 1.5 }, end: { x: M + w, y: baseline - 1.5 }, thickness: 0.5, color: c.link });
+      addLink([M, baseline - 3, M + w, baseline + size], uri || url);
+    }
+    y -= 4;
+  };
 
   for (const it of model.items) {
     if (it.pageBreak) { page = pdf.addPage([W, H]); y = H - M; }
@@ -876,7 +897,8 @@ async function renderPassportPdf(model) {
     else if (it.type === 'caveat') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
     else if (it.type === 'h3') { y -= 4; text(it.text, { bold: true, size: 12 }); }
     else if (it.type === 'note') text(it.text, { size: 9.5 });
-    else if (it.type === 'url') text(it.text, { size: 8, color: c.gray });
+    else if (it.type === 'path') { y -= 1; text(it.text, { size: 10, indent: 16, prefix: '•  ' }); } // icon is decorative → a plain marker in the PDF
+    else if (it.type === 'url') linkText(it.text, it.link || it.text);
     else if (it.type === 'qr') drawQR(it.url);
   }
   // useObjectStreams:false keeps the font dict + text operators in plain bytes — selectable text,

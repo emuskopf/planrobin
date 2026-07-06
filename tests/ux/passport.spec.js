@@ -14,7 +14,7 @@ test('print DOM and PDF render identical text from the shared model; PDF is text
     await loadPdfLib();
     const norm = (s) => s.replace(/\s+/g, ' ').trim();
     // Every element that carries one logical model string, in document order.
-    const SEL = '.pp-brand, .pp-asof, .pp-inputs > div, .pp-meds li, .pp-coverage, .pp-h, .pp-plan-name, .pp-plan-total, .pp-plan-sub, .pp-partial, .pp-savings, .pp-drugs td, .pp-caveats li, .pp-h3, .pp-note, .pp-url';
+    const SEL = '.pp-brand, .pp-asof, .pp-inputs > div, .pp-meds li, .pp-coverage, .pp-h, .pp-plan-name, .pp-plan-total, .pp-plan-sub, .pp-partial, .pp-savings, .pp-drugs td, .pp-caveats li, .pp-h3, .pp-note, .pp-path-text, .pp-url';
 
     const model = passportModelNow(state.lastData);
     const modelStrings = PRPassport.passportStrings(model).map(norm);
@@ -37,6 +37,7 @@ test('print DOM and PDF render identical text from the shared model; PDF is text
       isPdf: head === '%PDF-',
       hasFont: bytesStr.includes('Helvetica'),   // a font dict ⇒ real text, not a screenshot image
       hasImage: /\/Subtype\s*\/Image/.test(bytesStr),
+      hasLink: /\/Subtype\s*\/Link/.test(bytesStr) && bytesStr.includes('/URI'),   // the share URL is a real clickable link
       sizeKb: Math.round(pdf.bytes.length / 1024),
       filename: pdf.filename,
       buttons: [...document.querySelectorAll('.share-actions .share-btn')].map((b) => b.textContent),
@@ -50,6 +51,7 @@ test('print DOM and PDF render identical text from the shared model; PDF is text
   expect(r.isPdf).toBe(true);
   expect(r.hasFont, 'PDF embeds a text font (selectable, not an image)').toBe(true);
   expect(r.hasImage, 'PDF is not a screenshot/image render').toBe(false);
+  expect(r.hasLink, 'PDF has a clickable URI link for the share URL').toBe(true);
   expect(r.sizeKb).toBeLessThan(300);                                        // ≤ a few hundred KB
   expect(r.filename).toMatch(/^planrobin-comparison-\d{4}-\d{2}-\d{2}\.pdf$/);
   expect(r.buttons).toContain('Download PDF');

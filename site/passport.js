@@ -98,9 +98,14 @@
       'Confirm any plan on Medicare.gov, or by calling 1-800-MEDICARE (1-800-633-4227), before enrolling.',
       'Free, unbiased help: your State Health Insurance Assistance Program (SHIP) — find a counselor at shiphelp.org.',
     ]) items.push({ type: 'caveat', text: c });
+    // Three senior-first ways back in. Icons are decorative (DOM shows the emoji, the PDF shows a
+    // plain marker) so they're NOT part of the parity strings — the sentences are what must match.
     items.push({ type: 'h3', text: 'Reopen this comparison' });
-    items.push({ type: 'note', text: 'Scan the code, or type the link below, to reopen this exact search — it reruns against the newest plan data.' });
-    items.push({ type: 'url', text: opts.shareUrl || '' });
+    items.push({ type: 'note', text: 'To see this search again — with the newest plan data — pick whichever is easiest for you:' });
+    items.push({ type: 'path', icon: '📷', text: 'Use your phone’s camera. Open the camera as if you’re taking a picture, and point it at the square code below. You don’t need any special app. A link will pop up on the screen — tap it, and this exact search opens.' });
+    items.push({ type: 'path', icon: '📝', text: 'Or simply re-add your medications from the list on page 1. The search box helps as you type — it takes about a minute.' });
+    items.push({ type: 'path', icon: '🔗', text: 'Or tap the link below. If you’re reading this on a phone or computer, tap the web address and this exact search opens.' });
+    items.push({ type: 'url', text: opts.shareUrl || '', link: opts.shareUrl || '' });
     items.push({ type: 'qr', url: opts.shareUrl || '' });
 
     sanitizeItems(items); // WinAnsi-safe strings shared by the DOM + PDF (no divergence, no crash)
@@ -115,6 +120,7 @@
     const out = [];
     for (const it of model.items) {
       if (it.type === 'qr') continue;
+      if (it.type === 'path') { out.push(it.text); continue; } // the sentence (not the decorative icon)
       if (it.type === 'plan') {
         out.push(it.name, it.total, it.sub);
         if (it.partial) out.push(it.partial);

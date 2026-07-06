@@ -447,8 +447,12 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-caveats { font-size: 10pt; padding-left: 16pt; }
   .pp-caveats li { margin: 3pt 0; }
   .pp-share-cols { display: flex; gap: 16pt; align-items: flex-start; }
-  .pp-url { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8pt; word-break: break-all; background: #f4f4f4; padding: 4pt; border-radius: 3pt; }
+  .pp-url { display: inline-block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8pt; word-break: break-all; color: #0d4fa0; text-decoration: underline; background: #f4f4f4; padding: 4pt; border-radius: 3pt; }
   .pp-note { font-size: 9.5pt; }
+  /* three ways back in — icon (decorative) + a plain-English line each */
+  .pp-path { display: flex; gap: 6pt; align-items: baseline; font-size: 9.5pt; margin: 4pt 0; }
+  .pp-path-icon { flex: none; }
+  .pp-path-text { flex: 1; }
   .pp-qr-wrap { flex: none; }
   .pp-qr { width: 1.6in; height: 1.6in; }
 }

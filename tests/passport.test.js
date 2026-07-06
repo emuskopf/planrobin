@@ -57,6 +57,19 @@ t('coinsurance cost is WinAnsi-safe (≈ → ~) so the standard-font PDF can nev
   assert.ok(!s.some((x) => /≈/.test(x)), 'no un-encodable ≈ survives into the model');
 });
 
+t('reopen section offers three paths (camera, re-add, tap the link) + the share URL', () => {
+  const m = P.passportModel(data, drugs, { shareUrl: 'https://planrobin.com/#abc' });
+  const paths = m.items.filter((i) => i.type === 'path');
+  assert.strictEqual(paths.length, 3);
+  assert.ok(paths[0].text.startsWith('Use your phone’s camera'), paths[0].text);
+  assert.ok(/re-add your medications from the list on page 1/.test(paths[1].text), paths[1].text);
+  assert.ok(/tap the link/i.test(paths[2].text), paths[2].text);
+  const url = m.items.find((i) => i.type === 'url');
+  assert.strictEqual(url.link, 'https://planrobin.com/#abc'); // the clickable hyperlink target
+  const s = P.passportStrings(m);
+  assert.ok(s.includes(paths[0].text) && s.includes(url.text), 'path sentences + url are in the parity contract');
+});
+
 t('filename is planrobin-comparison-YYYY-MM-DD.pdf', () => {
   const m = P.passportModel(data, drugs, { shareUrl: 'x' });
   assert.ok(/^planrobin-comparison-\d{4}-\d{2}-\d{2}\.pdf$/.test(m.filename), m.filename);
