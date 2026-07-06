@@ -44,7 +44,7 @@ with the palette. Because "Robin" is Orange on Cream (3.86:1) it is only complia
   one-color). Don't re-typeset the wordmark in another face.
 - **Links home** — the header lockup is always a link to `/`, labelled "PlanRobin — home".
 
-**Tagline** — "Clear answers. Nothing to sell." Shown in the header lockup only where it's legible
+**Tagline** — "Clear answers. Back every season." Shown in the header lockup only where it's legible
 (desktop); dropped on narrow screens. *Provisionally final* — kept as its own text node so a swap is
 a one-line change.
 
