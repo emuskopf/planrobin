@@ -782,11 +782,24 @@ function planCardDom(it) {
   return card;
 }
 
+// One-color robin mark — a solid black silhouette (paper shows through the eye). Deliberately NOT the
+// painterly color illustration: a single ink holds up when the passport is photocopied or faxed. It's
+// decorative (aria-hidden) so it never enters the DOM↔PDF parity strings — the wordmark text does that.
+const ROBIN_1C_SVG = '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden="true" focusable="false">'
+  + '<ellipse cx="37" cy="37" rx="21" ry="16"/>'
+  + '<path d="M53 32 L63 44 L50 48 Z"/>'
+  + '<ellipse cx="25" cy="40" rx="13" ry="14"/>'
+  + '<circle cx="23" cy="25" r="12.5"/>'
+  + '<path d="M12 25 L2 27.5 L12 30 Z"/>'
+  + '<path d="M30 51 v9 M39 51 v9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/>'
+  + '<circle cx="26" cy="23" r="2.4" fill="#fff"/></svg>';
+function oneColorRobin() { const s = el('span', { className: 'pp-robin', 'aria-hidden': 'true' }); s.innerHTML = ROBIN_1C_SVG; return s; }
+
 function renderPassportDom(model) {
   const doc = el('div', { className: 'passport-doc' });
   let page = el('section', { className: 'pp-page' }); doc.append(page);
   let brand = '', asof = '';
-  const flushHead = () => { if (brand || asof) { page.insertBefore(el('div', { className: 'pp-head' }, [el('div', { className: 'pp-brand', textContent: brand }), el('div', { className: 'pp-asof', textContent: asof })]), page.firstChild); brand = asof = ''; } };
+  const flushHead = () => { if (brand || asof) { const left = el('div', { className: 'pp-brandmark' }, [oneColorRobin(), el('div', { className: 'pp-brand', textContent: brand })]); page.insertBefore(el('div', { className: 'pp-head' }, [left, el('div', { className: 'pp-asof', textContent: asof })]), page.firstChild); brand = asof = ''; } };
   const inputs = () => { let d = page.querySelector('.pp-inputs'); if (!d) { d = el('div', { className: 'pp-inputs' }); page.append(d); } return d; };
   const listIn = (host, cls) => { let ul = host.querySelector('.' + cls); if (!ul) { ul = el('ul', { className: cls }); host.append(ul); } return ul; };
 
@@ -820,8 +833,11 @@ async function renderPassportPdf(model) {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  // Serif (Times, a standard PDF font → no embedding, no size cost) for the wordmark + headings, so the
+  // PDF echoes the site's Source Serif look without shipping a font. Body stays Helvetica (crisp small).
+  const serif = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const W = 612, H = 792, M = 54, maxW = W - 2 * M;
-  const c = { ink: rgb(0.11, 0.15, 0.2), gray: rgb(0.3, 0.3, 0.32), green: rgb(0.08, 0.42, 0.23), red: rgb(0.69, 0, 0.13), line: rgb(0.8, 0.79, 0.75), link: rgb(0.05, 0.35, 0.72) };
+  const c = { ink: rgb(0.11, 0.15, 0.2), gray: rgb(0.3, 0.3, 0.32), green: rgb(0.08, 0.42, 0.23), red: rgb(0.69, 0, 0.13), line: rgb(0.8, 0.79, 0.75), link: rgb(0.05, 0.35, 0.72), mark: rgb(0.12, 0.16, 0.21) };
   let page = pdf.addPage([W, H]); let y = H - M;
   const drawn = [];
 
@@ -832,7 +848,7 @@ async function renderPassportPdf(model) {
   const text = (str, o = {}) => {
     if (str == null || str === '') return;
     if (o.record !== false) drawn.push(String(str));
-    const f = o.bold ? bold : font, size = o.size || 10.5, x = M + (o.indent || 0), width = maxW - (o.indent || 0);
+    const f = o.serif ? serif : (o.bold ? bold : font), size = o.size || 10.5, x = M + (o.indent || 0), width = maxW - (o.indent || 0);
     const lh = size * 1.32;
     for (const ln of wrap((o.prefix || '') + str, f, size, width)) { need(lh); y -= lh; page.drawText(ln, { x, y: y + lh * 0.24, size, font: f, color: o.color || c.ink }); }
     y -= (o.gap != null ? o.gap : 3);
@@ -847,6 +863,22 @@ async function renderPassportPdf(model) {
     const top = y;
     for (let i = 0; i < 3; i++) { let yy = top; for (const ln of wc[i]) { yy -= lh; page.drawText(ln, { x: cols[i].x, y: yy + lh * 0.24, size, font: i === 0 ? bold : font, color: c.ink }); } }
     y = top - rows * lh - 2;
+  };
+  // One-color robin glyph (decorative — NOT recorded to `drawn`, so it never touches parity). Solid
+  // ink shapes = photocopy-resilient. Coordinates are the 64×64 mark mapped into PDF space (y flipped:
+  // sy grows downward from yTop, matching pdf-lib's drawSvgPath anchor). Guarded so it can never break
+  // PDF generation. Returns the glyph width so the wordmark can sit beside it.
+  const drawRobin = (xLeft, yTop, s) => {
+    try {
+      const px = (sx) => xLeft + sx * s, py = (sy) => yTop - sy * s, col = c.mark;
+      page.drawEllipse({ x: px(37), y: py(37), xScale: 21 * s, yScale: 16 * s, color: col });          // body
+      page.drawSvgPath('M53 32 L63 44 L50 48 Z', { x: xLeft, y: yTop, scale: s, color: col });         // tail
+      page.drawCircle({ x: px(23), y: py(25), size: 12.5 * s, color: col });                            // head
+      page.drawEllipse({ x: px(25), y: py(40), xScale: 13 * s, yScale: 14 * s, color: col });           // breast
+      page.drawSvgPath('M12 25 L2 27.5 L12 30 Z', { x: xLeft, y: yTop, scale: s, color: col });         // beak
+      page.drawCircle({ x: px(26), y: py(23), size: 2.4 * s, color: rgb(1, 1, 1) });                    // eye knockout
+    } catch (e) { /* decorative — a drawing hiccup must never fail the PDF */ }
+    return 64 * s;
   };
   const drawQR = (url) => {
     let qr; try { qr = (typeof qrcode !== 'undefined') && qrcode(0, 'L'); if (!qr) return; qr.addData(url); qr.make(); } catch { return; }
@@ -878,13 +910,19 @@ async function renderPassportPdf(model) {
 
   for (const it of model.items) {
     if (it.pageBreak) { page = pdf.addPage([W, H]); y = H - M; }
-    if (it.type === 'brand') text(it.text, { bold: true, size: 16, gap: 2 });
+    if (it.type === 'brand') {
+      // one-color mark: robin glyph + serif wordmark on the same band, then the text (parity-recorded).
+      const gs = 22 / 64;                       // ~22pt-tall glyph
+      need(26); const glyphTop = y - 2;
+      const gw = drawRobin(M, glyphTop, gs);
+      text(it.text, { serif: true, size: 15, indent: gw + 8, gap: 2, color: c.mark });
+    }
     else if (it.type === 'asof') { text(it.text, { size: 9, color: c.gray, gap: 2 }); rule(); }
     else if (it.type === 'kv') text(it.text, { size: 10.5 });
     else if (it.type === 'label') text(it.text, { bold: true, size: 10.5, gap: 1 });
     else if (it.type === 'med') text(it.text, { size: 10.5, indent: 12, prefix: '•  ', gap: 1 });
     else if (it.type === 'coverage') { y -= 3; text(it.text, { size: 9.5, color: c.gray }); }
-    else if (it.type === 'h') { y -= 4; text(it.text, { bold: true, size: 14 }); rule(); }
+    else if (it.type === 'h') { y -= 4; text(it.text, { serif: true, size: 14 }); rule(); }
     else if (it.type === 'plan') {
       text(it.name, { bold: true, size: 12, gap: 1 });
       text(it.total, { bold: true, size: 12, color: it.noCover ? c.red : c.ink, gap: 1 });
@@ -895,7 +933,7 @@ async function renderPassportPdf(model) {
       rule();
     }
     else if (it.type === 'caveat') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
-    else if (it.type === 'h3') { y -= 4; text(it.text, { bold: true, size: 12 }); }
+    else if (it.type === 'h3') { y -= 4; text(it.text, { serif: true, size: 12 }); }
     else if (it.type === 'note') text(it.text, { size: 9.5 });
     else if (it.type === 'path') { y -= 1; text(it.text, { size: 10, indent: 16, prefix: '•  ' }); } // icon is decorative → a plain marker in the PDF
     else if (it.type === 'url') linkText(it.text, it.link || it.text);

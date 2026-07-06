@@ -1,0 +1,19 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <g>
+    <!-- body -->
+    <ellipse cx="37" cy="37" rx="21" ry="16" fill="#4b3f36"/>
+    <!-- tail -->
+    <path d="M53 32 L62 43 L51 47 Z" fill="#4b3f36"/>
+    <!-- orange breast (front-lower) -->
+    <ellipse cx="25" cy="40" rx="13" ry="14" fill="#C85A2B"/>
+    <!-- head -->
+    <circle cx="23" cy="25" r="12.5" fill="#443a31"/>
+    <!-- beak -->
+    <path d="M12 25 L3 27.5 L12 30 Z" fill="#E0902B"/>
+    <!-- eye -->
+    <circle cx="26" cy="23" r="2.6" fill="#F7F4EC"/>
+    <circle cx="26.6" cy="23.2" r="1.2" fill="#241f1b"/>
+    <!-- legs -->
+    <path d="M30 52 v8 M39 52 v8" stroke="#3a322b" stroke-width="2" stroke-linecap="round"/>
+  </g>
+</svg>

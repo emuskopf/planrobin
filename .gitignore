@@ -38,3 +38,7 @@ Thumbs.db
 # contain her meds/plan (health PII). Keep the dir, ignore the contents.
 /out/*
 !out/.gitkeep
+
+# brand rollout scratch + redundant source archive (extracted into brand/)
+_brandtmp/
+PlanRobin_Concepts.zip

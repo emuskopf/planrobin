@@ -1,5 +1,15 @@
 /* PlanRobin design foundation — see DESIGN.md. Calm · Sturdy · Unhurried. */
 
+/* Brand serif — Source Serif 4 (SIL OFL), self-hosted, latin subset, variable weight axis.
+   Used for the wordmark and headings only; body keeps the legible system stack. NO font CDNs. */
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 400 700;            /* one variable file covers the weight range */
+  font-display: swap;
+  src: url("fonts/source-serif-4-latin.woff2") format("woff2");
+}
+
 :root {
   /* type scale (rem so it honors browser zoom + user font size) */
   --fs-fine: 0.875rem;   /* 14 */
@@ -12,9 +22,21 @@
   --lh: 1.6;
   --lh-tight: 1.25;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+
+  /* ---- Brand palette (see DESIGN.md — this is the law) ----
+     Navy #1F3A56 · Orange #C85A2B · Forest #39573A · Sage #A4B28C · Warm Gray #756C5C · Cream #F7F4EC.
+     UI chrome maps to Navy; status colors are a functional traffic-light layer nudged toward brand
+     where it stays AA. Orange is decorative/large-only (≈3.9:1 — never small text or white-on-orange). */
+  --brand-navy: #1F3A56;
+  --brand-orange: #C85A2B;
+  --brand-forest: #39573A;
+  --brand-sage: #A4B28C;
+  --brand-warm-gray: #756C5C;
+  --brand-cream: #F7F4EC;
 
   /* color */
-  --bg: #f5f3ee;
+  --bg: #F7F4EC;              /* Cream */
   --surface: #ffffff;
   --surface-2: #faf9f6;
   --ink: #1c2733;
@@ -22,16 +44,16 @@
   --ink-3: #5c6773;
   --line: #e2ded4;
   --line-2: #cdc9be;
-  --accent: #0f5f76;
-  --accent-2: #0b4a5c;
-  --accent-tint: #e7f0f3;
-  --good: #146c3a;
-  --good-tint: #e8f2ec;
-  --caution: #8a5a00;
+  --accent: #1F3A56;         /* Navy — links, buttons, focus (≈9.7:1 on white, AAA) */
+  --accent-2: #14293d;       /* Navy, darkened for hover */
+  --accent-tint: #e9edf2;    /* Navy tint */
+  --good: #39573A;           /* Forest (≈5.7:1, AA) — "covered" */
+  --good-tint: #e9efe9;
+  --caution: #8a5a00;        /* functional amber — no brand equivalent; AA small-text safe */
   --caution-tint: #f6efdd;
-  --notcov: #9a3b2f;
+  --notcov: #9a3b2f;         /* brand Orange family, darkened for AA small text */
   --notcov-tint: #f6e9e6;
-  --focus: #1558d6;
+  --focus: #1F3A56;          /* Navy focus ring (≈9.7:1 on cream) */
 
   /* spacing (px) */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
@@ -57,7 +79,7 @@ body {
 
 /* break long words at large font/zoom so a heading never overflows the column (200% breaks nothing).
    `anywhere` (not break-word) also shrinks min-content, so a wide word can't force an overflow. */
-h1, h2, h3, h4 { line-height: var(--lh-tight); color: var(--ink); margin: 0 0 var(--sp-3); font-weight: 700; overflow-wrap: anywhere; }
+h1, h2, h3, h4 { font-family: var(--font-serif); line-height: var(--lh-tight); color: var(--ink); margin: 0 0 var(--sp-3); font-weight: 600; overflow-wrap: anywhere; }
 h1 { font-size: var(--fs-xl); letter-spacing: -0.01em; }
 h2 { font-size: var(--fs-lg); }
 h3 { font-size: var(--fs-md); }
@@ -74,12 +96,30 @@ strong { font-weight: 700; }
 a:focus-visible { outline-offset: 3px; }
 
 /* ---------- header ---------- */
-.site-header { background: var(--surface); border-bottom: 1px solid var(--line); }
+.site-header { background: var(--brand-cream); border-bottom: 1px solid var(--line); }
 /* wrap (not overflow) when large font/zoom makes brand + beta wider than the screen */
 .site-header .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); min-height: 60px; padding-top: var(--sp-3); padding-bottom: var(--sp-3); }
-.brand { font-weight: 800; font-size: var(--fs-md); letter-spacing: -0.01em; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: var(--sp-2); }
+/* Primary horizontal mark: painterly robin + live-text wordmark (crisp, selectable, scales cleanly).
+   The wordmark is real text in Source Serif 4 Semibold — Plan in navy, Robin in orange. */
+.brand { display: inline-flex; align-items: center; gap: var(--sp-3); color: var(--ink); text-decoration: none; }
 .brand:hover { color: var(--ink); }
-.beta { font-size: var(--fs-fine); color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.brand:hover .wordmark { text-decoration: none; }
+.brand-robin { flex: none; width: 44px; height: 44px; object-fit: contain; }
+.brand-lockup { display: inline-flex; flex-direction: column; justify-content: center; gap: 1px; }
+/* Wordmark stays one line normally; at big font/zoom it breaks cleanly at the <wbr> between the two
+   words (Plan / Robin) rather than overflowing. `anywhere` guarantees it can never force overflow. */
+.wordmark { font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-lg); line-height: 1.05; letter-spacing: -0.005em; overflow-wrap: anywhere; }
+.wordmark .wm-plan { color: var(--brand-navy); }
+.wordmark .wm-robin { color: var(--brand-orange); }
+.brand-tagline { font-size: var(--fs-fine); color: var(--ink-2); line-height: 1.2; }
+.beta { font-size: var(--fs-fine); color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+/* Narrow screens: drop the tagline and shrink the robin so the lockup stays on one crisp line.
+   The wordmark stays at --fs-lg (28px): "Robin" is brand orange (~3.86:1 on cream), which only clears
+   WCAG as LARGE text (≥24px → 3:1). Never shrink it below 24px or the contrast floor fails. */
+@media (max-width: 380px) {
+  .brand-robin { width: 36px; height: 36px; }
+  .brand-tagline { display: none; }
+}
 
 /* ---------- hero ---------- */
 .hero { padding: var(--sp-7) 0 var(--sp-5); }
@@ -422,9 +462,12 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .passport-doc { color: #000; }
   .pp-page { page-break-after: always; }
   .pp-page:last-child { page-break-after: auto; }
-  .pp-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #000; padding-bottom: 6pt; margin-bottom: 10pt; }
-  .pp-brand { font-size: 15pt; font-weight: 800; }
-  .pp-asof { font-size: 9pt; color: #333; }
+  .pp-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 6pt; margin-bottom: 10pt; }
+  .pp-brandmark { display: flex; align-items: center; gap: 7pt; }
+  .pp-robin { flex: none; width: 24pt; height: 24pt; color: #000; }
+  .pp-robin svg { width: 100%; height: 100%; display: block; }
+  .pp-brand { font-family: var(--font-serif); font-size: 15pt; font-weight: 600; }
+  .pp-asof { font-size: 9pt; color: #333; text-align: right; }
   .pp-h { font-size: 13pt; margin: 12pt 0 6pt; border-bottom: 1px solid #999; padding-bottom: 2pt; }
   .pp-h3 { font-size: 11pt; margin: 10pt 0 4pt; }
   .pp-coverage { font-size: 9.5pt; color: #333; margin: 4pt 0 2pt; }
