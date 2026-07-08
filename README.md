@@ -280,8 +280,8 @@ browser (site/app.js)  ──►  /api/* Pages Functions  ──►  typed tools
 ```
 The browser talks only to our own `/api/*`. `DATABASE_URL` stays server-side (Pages env
 var). RxNorm is proxied through a Function so caching/rate-limits live in one place
-(`Cache-Control: max-age=86400`). **The medication list never leaves the browser except as
-RXCUIs** in the `/api/results` request.
+(`Cache-Control: max-age=86400`). **The medication list is never stored** — only anonymous
+RXCUIs leave the browser, in the `/api/results` request, and nothing is persisted.
 
 ## Endpoints
 - `GET /api/counties` → Missouri counties for the dropdown.

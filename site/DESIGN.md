@@ -144,7 +144,9 @@ Layout leans on the larger steps — space is how "unhurried" is expressed.
 
 ## Trust furniture = features, not footer fine print
 Placed at the point of use, not buried:
-- **Privacy sits AT the medication input**: "Your medication list never leaves this device."
+- **Privacy sits AT the medication input**: "Your medication list is never stored." (We send only
+  anonymous drug codes to look up prices — never a name — so we never claim "nothing leaves your
+  device," which would be false: see UX-REVIEW.md rule 3.)
 - **Non-affiliation** ("a private website, not affiliated with the federal Medicare program")
   appears near the hero and in the footer.
 - **"Free. No accounts. We don't sell anything — or anyone."** is a visible trust line, not a tagline.
