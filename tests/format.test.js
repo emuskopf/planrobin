@@ -140,14 +140,56 @@ t('unequal phases: deductible tier states pre-deductible → initial → catastr
   assert.strictEqual(s.lines[0], 'At a standard pharmacy: $47.00 before you meet the deductible, then $10.00 until you reach catastrophic coverage, then $0.00.');
 });
 
-t('mail discount: a 90-day-by-mail below 3× is stated as signal, not the shared footnote', () => {
+t('mail discount (nonzero): phase story and the 90-day discount are SEPARATE sentences', () => {
   const phases = ph({
     '1': { '1': { standardRetail: copay(10), preferredMail: copay(3) },
            '2': { standardRetail: copay(30), preferredMail: copay(6) } },
   });
   const s = F.phaseSummary(phases);
-  assert.ok(s.lines.some((l) => l.includes('By this plan’s mail-order pharmacy: $3.00 all year — a 90-day supply by mail is $6.00, less than three 30-day fills.')), s.lines.join(' | '));
+  // two distinct sentences, never welded with an em-dash into the phase story
+  assert.ok(s.lines.includes('By this plan’s mail-order pharmacy: $3.00 all year.'), s.lines.join(' | '));
+  assert.ok(s.lines.includes('A 90-day supply by mail is $6.00, less than three 30-day fills.'), s.lines.join(' | '));
+  assert.ok(!s.lines.some((l) => /—/.test(l)), 'no welded em-dash sentence: ' + s.lines.join(' | '));
   assert.strictEqual(s.footnote, null); // not all channels are the plain 3× → no shared footnote
+});
+
+t('REPORTED $0 mail case (30-day $5 / 90-day $0): unambiguous two-sentence form, no comparison, anchored', () => {
+  const phases = ph({
+    '0': { '1': { preferredMail: copay(5) } },
+    '1': { '1': { preferredMail: copay(5) }, '2': { preferredMail: copay(0) } },
+    '3': { '1': { preferredMail: copay(5) } },
+  });
+  const s = F.phaseSummary(phases);
+  assert.deepStrictEqual(s.lines, [
+    'By this plan’s mail-order pharmacy: $5.00 all year.',
+    'A 90-day supply by mail is $0 all year.',
+  ], s.lines.join(' | '));
+  // the $0 case drops the "less than three 30-day fills" comparison entirely, and never welds
+  assert.ok(!s.lines.some((l) => /less than three|—/.test(l)), s.lines.join(' | '));
+});
+
+console.log('\nExplainer prose renders from the engine parameter (prose and math can’t disagree):');
+const { paramsForYear } = require('../tools/overrides/statutory-params');
+const fs = require('fs');
+
+t('capPhrase renders "$2,100 in 2026" straight from the statutory parameter', () => {
+  const y = 2026, cap = paramsForYear(y).oopCapAnnual;
+  assert.strictEqual(cap, 2100); // guards the verified param itself
+  assert.strictEqual(F.capPhrase({ oopCapAnnual: cap, planYear: y }), '$2,100 in 2026');
+  assert.strictEqual(F.capPhrase({}), null);       // no data → number-free fallback, never a guess
+  assert.strictEqual(F.capPhrase(null), null);
+});
+
+t('no user-facing page hardcodes a cap amount/year — the number comes only from the parameter', () => {
+  const faq = fs.readFileSync(__dirname + '/../site/faq.html', 'utf8');
+  const app = fs.readFileSync(__dirname + '/../site/app.js', 'utf8');
+  // the stale strings must be gone, and no literal cap dollar figure may be baked into the prose
+  for (const [name, src] of [['faq.html', faq], ['app.js', app]]) {
+    assert.ok(!/\$2,000|in 2025\)/.test(src), `${name} still hardcodes the old cap/year`);
+    assert.ok(!/\$2,100/.test(src), `${name} hardcodes a cap figure instead of reading the parameter`);
+  }
+  // faq renders the cap from /api/meta via the shared formatter (single source of truth)
+  assert.ok(/oop-cap-phrase/.test(faq) && /\/api\/meta/.test(faq) && /capPhrase/.test(faq), 'faq must fill the cap from /api/meta');
 });
 
 t('coinsurance: % with the estimated-basis note; no fabricated dollars', () => {

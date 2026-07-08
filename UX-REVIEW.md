@@ -126,6 +126,19 @@ hand too because a mechanism can reappear in a new component:
    a blank print preview). Offer the FILE: a saveable, textable, showable, print-anywhere-later PDF.
    Feature-detect capabilities (`navigator.canShare({files})`) and degrade gracefully; keep Print
    where it works (wide screens), demoted. *(v=23 Plan Passport PDF.)*
+10. **Welded explainer sentences blur which number is which; hardcoded numbers in prose drift from the
+   math.** Two user-reported failures from one rider *(2026-07-07, v=28)*:
+   (a) A phase-detail line welded the phase story and the 90-day mail discount with an em-dash, so a
+   90-day **$0** read as if it were the catastrophic-phase outcome. Rule: the phase story and the
+   days-supply discount are **separate sentences**; an always-true price is anchored in time
+   ("all year"); the **$0 case states it plainly and drops** the "less than three 30-day fills"
+   comparison (kept only for nonzero discounts). *(`PRFormat.phaseSummary`.)*
+   (b) The phases glossary hardcoded "($2,000 in 2025)" while the engine had already moved to
+   $2,100 / 2026. **RULING: every number in explainer prose renders from the same parameter the engine
+   computes with — prose and math must be incapable of disagreeing.** The cap now flows
+   `statutory-params.js` → `/api/meta` → `PRFormat.capPhrase()` into both the FAQ glossary and the
+   in-app tooltip; no page hardcodes a cap amount or year, and a test (`tests/meta.test.js` +
+   `tests/format.test.js`) asserts it.
 
 ---
 

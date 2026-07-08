@@ -75,8 +75,8 @@
         <li id="initial-coverage"><strong>Initial coverage</strong> — your regular copay or
           coinsurance after the deductible is met. This is the headline number in the checker.</li>
         <li id="catastrophic"><strong>Catastrophic</strong> — once your yearly out-of-pocket
-          spending reaches the cap ($2,000 in 2025), covered drugs are $0 for the rest of the
-          year. (The old "donut hole" coverage gap was removed in 2025.)</li>
+          spending reaches the annual out-of-pocket cap<span id="oop-cap-phrase"></span>, covered
+          drugs are $0 for the rest of the year. (The old "donut hole" coverage gap was removed in 2025.)</li>
       </ul>
       <p class="muted small">Full article coming soon.</p>
     </section>
@@ -153,5 +153,16 @@
       </p>
     </div>
   </footer>
+
+  <!-- The out-of-pocket cap in the Catastrophic entry is rendered from /api/meta — the SAME statutory
+       parameter the cost engine computes with — so the glossary and the math can't disagree. No cap
+       amount or year is hardcoded in this page; without JS the sentence simply omits the parenthetical. -->
+  <script src="/format.js?v=28"></script>
+  <script>
+    fetch('/api/meta').then(function (r) { return r.json(); }).then(function (m) {
+      var t = window.PRFormat && PRFormat.capPhrase(m);
+      if (t) document.getElementById('oop-cap-phrase').textContent = ' (' + t + ')';
+    }).catch(function () {});
+  </script>
 </body>
 </html>

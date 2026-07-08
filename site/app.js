@@ -29,7 +29,9 @@ const DAYS = [['1', '30-day'], ['2', '90-day']];
 const TERMS = {
   'pre-deductible': 'Early in the year, before you’ve met the plan’s deductible.',
   'initial-coverage': 'Your regular cost after meeting the deductible. This is the headline number above.',
-  'catastrophic': 'After your yearly out-of-pocket spending reaches the cap ($2,000 in 2025), covered drugs are $0 for the rest of the year.',
+  // The specific cap amount + year are filled in from /api/meta (the same statutory parameter the
+  // engine computes with) once meta loads — never hardcoded here, so prose can't go stale.
+  'catastrophic': 'After your yearly out-of-pocket spending reaches the cap, covered drugs are $0 for the rest of the year.',
   'standard-retail': 'Any in-network pharmacy.',
   'preferred-retail': 'Specific pharmacies the plan picks as lower-cost.',
   'preferred-mail': 'The plan’s mail-order pharmacy — often the cheapest, especially for 90-day fills.',
@@ -66,6 +68,9 @@ async function init() {
   try {
     const meta = await getJSON('/api/meta');
     renderProvenance(meta);
+    // Fill the cap amount + year into the catastrophic glossary blurb from the engine's own parameter.
+    const cap = PRFormat.capPhrase(meta);
+    if (cap) TERMS['catastrophic'] = `After your yearly out-of-pocket spending reaches the cap (${cap}), covered drugs are $0 for the rest of the year.`;
   } catch { $('#provenance').textContent = 'Data: source unavailable'; }
   try {
     const { counties } = await getJSON('/api/counties');
@@ -499,7 +504,7 @@ function renderPlan(p) {
 }
 
 // Itemized, plain-English breakdown of exactly what's in (and out of) the headline number.
-// Premium + flat copays + coinsurance-estimated make up the total (which stops at the $2,000 cap).
+// Premium + flat copays + coinsurance-estimated make up the total (which stops at the annual OOP cap).
 // Coinsurance is estimated from the quantity you picked; a coinsurance drug with no published
 // price, and any not-covered drug, are shown by name and never folded in as a fake number.
 function renderBreakdown(p) {

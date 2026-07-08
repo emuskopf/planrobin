@@ -4,8 +4,8 @@
 //
 // Rounding rule (so itemized lines always visibly add up): the displayed total is the SUM OF THE
 // ROUNDED components — never round(sum-of-raw) — so premium + copays + coinsurance-estimates shown
-// on screen add up to the total shown. When the $2,000 cap binds, the total is the capped value and
-// the cap note explains that it's less than the components add up to.
+// on screen add up to the total shown. When the out-of-pocket cap binds, the total is the capped
+// value and the cap note explains that it's less than the components add up to.
 (function (global) {
   'use strict';
   const round = (n) => Math.round(Number(n) || 0);
@@ -102,30 +102,41 @@
       else s += ' all year';
       return s;
     }
-    // 90-day vs 3× the 30-day (copay channels only). '3x' | {discount:'$x'} | null.
+    // 90-day vs 3× the 30-day (copay channels only). '3x' | {kind:'discount', ...} | null.
     function ninety(chan) {
       const p1 = at('1', '1', chan), p90 = at('1', '2', chan);
       if (!offered(p1) || !offered(p90) || p1.kind !== 'copay' || p90.kind !== 'copay') return null;
       const triple = p1.dollars * 3;
       if (Math.abs(p90.dollars - triple) < 0.005) return { kind: '3x' };
-      if (p90.dollars < triple - 0.005) return { kind: 'discount', text: '$' + p90.dollars.toFixed(2) };
+      if (p90.dollars < triple - 0.005) return { kind: 'discount', text: '$' + p90.dollars.toFixed(2), zero: p90.dollars < 0.005 };
       return null;
     }
+    // The phase story and the 90-day discount are SEPARATE sentences — welding them (with an em-dash)
+    // read as if the 90-day price were a phase outcome (e.g. the catastrophic $0). The 90-day price is
+    // always-true, so anchor it in time ("all year"); when it's $0, say so plainly and drop the "less
+    // than three 30-day fills" comparison (a comparison only helps when there's a nonzero price to weigh).
+    // Returns 1–2 lines to spread into the list.
     const withNinety = (line, chan, byMail) => {
+      const out = [line];
       const n = ninety(chan);
-      if (n && n.kind === 'discount') return line.replace(/\.$/, '') + ' — a 90-day supply' + (byMail ? ' by mail' : '') + ' is ' + n.text + ', less than three 30-day fills.';
-      return line;
+      if (n && n.kind === 'discount') {
+        const where = byMail ? ' by mail' : '';
+        out.push(n.zero
+          ? 'A 90-day supply' + where + ' is $0 all year.'
+          : 'A 90-day supply' + where + ' is ' + n.text + ', less than three 30-day fills.');
+      }
+      return out;
     };
 
     const lines = [];
     const std = pattern('standardRetail');
-    if (std) lines.push(withNinety('At a standard pharmacy: ' + std + '.', 'standardRetail', false));
+    if (std) lines.push(...withNinety('At a standard pharmacy: ' + std + '.', 'standardRetail', false));
 
     const pr = pattern('preferredRetail'), pm = pattern('preferredMail');
-    if (pr && pm && pr === pm) lines.push(withNinety('At this plan’s preferred pharmacies (or by mail): ' + pr + '.', 'preferredMail', true));
+    if (pr && pm && pr === pm) lines.push(...withNinety('At this plan’s preferred pharmacies (or by mail): ' + pr + '.', 'preferredMail', true));
     else {
-      if (pr) lines.push(withNinety('At this plan’s preferred pharmacies: ' + pr + '.', 'preferredRetail', false));
-      if (pm) lines.push(withNinety('By this plan’s mail-order pharmacy: ' + pm + '.', 'preferredMail', true));
+      if (pr) lines.push(...withNinety('At this plan’s preferred pharmacies: ' + pr + '.', 'preferredRetail', false));
+      if (pm) lines.push(...withNinety('By this plan’s mail-order pharmacy: ' + pm + '.', 'preferredMail', true));
     }
 
     const CH = ['standardRetail', 'preferredRetail', 'preferredMail', 'standardMail'];
@@ -139,7 +150,15 @@
     return { lines, footnote };
   }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary };
+  // The out-of-pocket cap as prose ("$2,100 in 2026") — straight from the statutory parameter the
+  // engine computes with (served on /api/meta). Explainer prose and the math read the SAME number, so
+  // they can't disagree. Null when meta lacks it, so callers can fall back to a number-free phrase.
+  function capPhrase(meta) {
+    if (!meta || meta.oopCapAnnual == null || meta.planYear == null) return null;
+    return dollars(meta.oopCapAnnual) + ' in ' + meta.planYear;
+  }
+
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);
