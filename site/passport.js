@@ -91,13 +91,21 @@
     }
 
     items.push({ type: 'h', text: 'Before you decide', pageBreak: true });
-    for (const c of [
+    const caveats = [
       `Costs are estimates from public CMS files (as of CMS ${meta.quarter || ''}, loaded ${asOf}). Your actual cost can differ with pharmacy, days-supply, deductible status, and coverage phase.`,
       'Educational tool — not advice, and not an enrollment. PlanRobin does not sell insurance or enroll you in coverage.',
       'A private website — not affiliated with the federal Medicare program or any insurance company.',
+    ];
+    // Only when an MA-PD is actually printed: the premium shown is the Part D drug-coverage portion,
+    // not the plan's full premium. Conditional so a PDP-only sheet carries no note it doesn't need.
+    if (top.some((p) => PRFormat.isMaPd(p.planType))) {
+      caveats.push("Medicare Advantage plans may also have a separate medical premium not shown here — the premiums printed are the drug-coverage portion, which is what matters for comparing drug costs. Confirm a plan's full premium on Medicare.gov or with a SHIP counselor.");
+    }
+    caveats.push(
       'Confirm any plan on Medicare.gov, or by calling 1-800-MEDICARE (1-800-633-4227), before enrolling.',
       'Free, unbiased help: your State Health Insurance Assistance Program (SHIP) — find a counselor at shiphelp.org.',
-    ]) items.push({ type: 'caveat', text: c });
+    );
+    for (const c of caveats) items.push({ type: 'caveat', text: c });
     // Three senior-first ways back in. Icons are decorative (DOM shows the emoji, the PDF shows a
     // plain marker) so they're NOT part of the parity strings — the sentences are what must match.
     items.push({ type: 'h3', text: 'Reopen this comparison' });

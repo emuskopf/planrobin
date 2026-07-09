@@ -39,6 +39,22 @@ t('string contract is complete: brand, county, meds, plan money, caveats, reopen
   assert.ok(s.includes('https://planrobin.com/#abc'), 'reopen url');
 });
 
+t('MA-PD premium caveat renders when an MA-PD is printed, and NOT for a PDP-only list', () => {
+  // the fixture is all MA-PD → the caveat must appear in the shared model (so DOM + PDF both carry it)
+  const withMa = P.passportStrings(P.passportModel(data, drugs, { shareUrl: 'x' }));
+  assert.ok(withMa.some((x) => /separate medical premium not shown here/.test(x)), 'MA-PD caveat present when an MA-PD is in the printed list');
+
+  // a PDP-only sheet carries no note it doesn't need (conditional honesty — no noise)
+  const pdpOnly = {
+    county: { name: 'St. Louis', state: 'Missouri' }, planCount: 1, meta: { quarter: '2026-Q1' },
+    plans: [{ planId: 'S5601-001', segmentId: '000', planName: 'SilverScript Choice', planType: 'PDP',
+      premium: 22.4, deductible: 0, notCovered: 0, annualComplete: true, breakdown: {},
+      drugs: { '9': { covered: true, tier: 2, flags: {}, headline: { kind: 'copay', dollars: 10 }, appliedOverrides: [] } } }],
+  };
+  const noMa = P.passportStrings(P.passportModel(pdpOnly, [['9', { label: 'somedrug', qty: 30 }]], { shareUrl: 'x' }));
+  assert.ok(!noMa.some((x) => /separate medical premium/.test(x)), 'no MA-PD caveat for a PDP-only list');
+});
+
 t('numbers/strings all come from PRFormat (no bare $0.00 totals, whole-dollar yearly totals)', () => {
   const m = P.passportModel(data, drugs, { shareUrl: 'x' });
   const totals = m.items.filter((i) => i.type === 'plan').map((i) => i.total);

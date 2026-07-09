@@ -160,7 +160,7 @@
   <!-- The out-of-pocket cap in the Catastrophic entry is rendered from /api/meta — the SAME statutory
        parameter the cost engine computes with — so the glossary and the math can't disagree. No cap
        amount or year is hardcoded in this page; without JS the sentence simply omits the parenthetical. -->
-  <script src="/format.js?v=29"></script>
+  <script src="/format.js?v=30"></script>
   <script>
     fetch('/api/meta').then(function (r) { return r.json(); }).then(function (m) {
       var t = window.PRFormat && PRFormat.capPhrase(m);
