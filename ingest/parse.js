@@ -82,6 +82,12 @@ async function parseMissouri(sourceDir, opts = {}) {
     const key = `${r.CONTRACT_ID}|${r.PLAN_ID}|${r.SEGMENT_ID}`;
     let p = planMap.get(key);
     if (!p) {
+      // PREMIUM: the CMS Plan Information file value. Evidence (every MO MA-PD plan = $0) says it's the
+      // Part D drug-coverage portion for MA-PD, not the total plan premium — so the UI labels MA-PD as
+      // "drug coverage premium" (PRFormat.premiumLabel). See planrobin-premium-semantics.
+      // TODO(2026-07-29 quarterly ingest): read the record layout that ships in the PUF download, capture
+      // the VERBATIM PREMIUM definition into README §Data sources, and confirm/amend the label. If CMS's
+      // text contradicts the Part D-portion reading, STOP and flag before touching copy again.
       p = {
         contract_id: r.CONTRACT_ID, plan_id: r.PLAN_ID, segment_id: r.SEGMENT_ID,
         plan_name: r.PLAN_NAME, contract_name: r.CONTRACT_NAME, plan_type: planType,

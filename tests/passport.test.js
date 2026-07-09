@@ -31,7 +31,8 @@ t('string contract is complete: brand, county, meds, plan money, caveats, reopen
   assert.ok(s.includes('PlanRobin — Medicare drug plan comparison'), 'brand');
   assert.ok(s.some((x) => /^County: .+, .+/.test(x)), 'county');
   assert.ok(s.some((x) => /duloxetine/.test(x)), 'a medication name');
-  assert.ok(s.some((x) => /· premium \$\d/.test(x)), 'a plan sub line with the CMS id + premium');
+  // fixture plans are MA-PD → the sub line qualifies the premium as the drug-coverage portion
+  assert.ok(s.some((x) => /· drug coverage premium \$\d/.test(x)), 'MA-PD plan sub line shows the drug-coverage premium qualifier');
   assert.ok(s.some((x) => /\/yr|Doesn’t cover/.test(x)), 'a plan total');
   assert.ok(s.includes('Before you decide'), 'caveats heading');
   assert.ok(s.some((x) => /1-800-MEDICARE/.test(x)), 'medicare phone caveat');

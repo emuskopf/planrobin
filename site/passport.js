@@ -78,7 +78,7 @@
         : PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (cov.complete ? (p.annualComplete ? '' : ' so far') : ` · for ${cov.covered} of ${cov.total}`);
       const item = {
         type: 'plan', name: p.planName, total,
-        sub: `${p.planType} · ${PRFormat.planDisplayId(p, ambig)} · premium ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}`,
+        sub: `${p.planType} · ${PRFormat.planDisplayId(p, ambig)} · ${PRFormat.premiumLabel(p.planType)} ${money(p.premium || 0)}/mo · deductible ${money(p.deductible || 0)}`,
         noCover: cov.covered === 0, partialFlag: !cov.complete && cov.covered > 0,
         drugs: planDrugRows(p, drugs),
       };

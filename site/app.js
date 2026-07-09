@@ -38,7 +38,7 @@ const TERMS = {
   'preferred-pharmacy': 'A pharmacy this plan has negotiated lower copays with. Most pharmacy chains are “preferred” on some plans and “standard” on others — it depends on the plan, not just the pharmacy.',
   'days-supply': 'How many days each fill covers. At a regular pharmacy a 90-day fill usually costs 3× the 30-day copay — the real 90-day savings come from mail order.',
   // Plan types
-  'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare.',
+  'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare. Medicare Advantage plans may also have a separate medical premium not shown here — this figure is the drug-coverage portion, which is what matters for comparing drug costs.',
   'pdp': 'A stand-alone Prescription Drug Plan you add on to Original Medicare.',
   'plan-id': 'This is the plan’s official Medicare ID — it’s printed on the plan’s membership card, and it’s the surest way to confirm you’re looking at the right plan on Medicare.gov, with 1-800-MEDICARE, or with a SHIP counselor.',
   // Costs
@@ -480,7 +480,7 @@ function renderPlan(p) {
         document.createTextNode(' · '),
         el('span', { className: 'term plan-id', title: TERMS['plan-id'], textContent: displayPlanId(p) }),
         document.createTextNode(' · '),
-        el('span', { className: 'term', title: TERMS.premium, textContent: `premium ${money(p.premium || 0)}/mo` }),
+        el('span', { className: 'term', title: TERMS.premium, textContent: `${PRFormat.premiumLabel(p.planType)} ${money(p.premium || 0)}/mo` }),
         document.createTextNode(' · '),
         el('span', { className: 'term', title: TERMS.deductible, textContent: `deductible ${money(p.deductible || 0)}` }),
       ]),

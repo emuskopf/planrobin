@@ -112,7 +112,9 @@ All files are **pipe-delimited with a header row as the first line** (confirmed 
 reading the actual first rows — noted here because older CMS PUFs shipped headerless).
 Column counts match `SPUFRecordLayout-2026.pdf` exactly:
 
-- Plan Information — 14 cols. Key: `CONTRACT_ID|PLAN_ID|SEGMENT_ID` → `FORMULARY_ID`, `PLAN_NAME`, `STATE`, `COUNTY_CODE`, `PDP_REGION_CODE`.
+- Plan Information — 14 cols. Key: `CONTRACT_ID|PLAN_ID|SEGMENT_ID` → `FORMULARY_ID`, `PLAN_NAME`, `STATE`, `COUNTY_CODE`, `PDP_REGION_CODE`. Also `PREMIUM`, `DEDUCTIBLE`.
+  - **`PREMIUM` semantics — for an MA-PD this is the Part D drug-coverage portion, not the total plan premium** (evidence: every MO MA-PD row = $0; a total-premium field would vary). PDP premiums are the whole premium. The UI labels MA-PD as "drug coverage premium" accordingly (`PRFormat.premiumLabel`).
+    ⏳ *Verbatim CMS definition pending:* on the **2026-07-29 quarterly ingest**, read `SPUFRecordLayout-2026.pdf` (bundled in the PUF download), paste the exact `PREMIUM` field text here, and confirm/amend the label. If CMS's text contradicts the Part D-portion reading, stop and flag before changing copy. (`ingest/parse.js` PREMIUM comment; `planrobin-premium-semantics`.)
 - Basic Drugs Formulary — 12 cols. Key: `FORMULARY_ID` + `RXCUI` + `NDC` → `TIER_LEVEL_VALUE`, `PRIOR_AUTHORIZATION_YN`, `STEP_THERAPY_YN`, `QUANTITY_LIMIT_*`, `SELECTED_DRUG_YN`.
 - Beneficiary Cost — 24 cols. Key: `CONTRACT_ID|PLAN_ID|SEGMENT_ID` + `COVERAGE_LEVEL` + `TIER` + `DAYS_SUPPLY` → copay/coinsurance per pharmacy channel.
 - Geographic Locator — 7 cols. Key: `COUNTY_CODE` → `STATENAME`, `COUNTY`, `PDP_REGION_CODE`.

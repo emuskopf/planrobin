@@ -38,7 +38,9 @@
       <ul>
         <li id="ma-pd"><strong>MA-PD</strong> — a Medicare Advantage plan that includes drug
           coverage. It's an all-in-one plan (medical + drugs) that replaces Original Medicare,
-          usually run by a private insurer.</li>
+          usually run by a private insurer. <strong>MA-PD plans may also have a separate medical
+          premium that we don't show</strong> — the premium in our results is the drug-coverage
+          portion, which is what matters for comparing drug costs.</li>
         <li id="pdp"><strong>PDP</strong> — a stand-alone Prescription Drug Plan you add on top
           of Original Medicare, just for drug coverage.</li>
       </ul>
@@ -49,7 +51,8 @@
       <h2>Premium, deductible, copay, coinsurance</h2>
       <ul>
         <li id="premium"><strong>Premium</strong> — the fixed monthly amount you pay to have the
-          plan, no matter how many drugs you take.</li>
+          plan, no matter how many drugs you take. For a stand-alone drug plan (PDP) that's the whole
+          premium; for an MA-PD we show the drug-coverage portion (its medical premium is separate).</li>
         <li id="deductible"><strong>Deductible</strong> — what you pay out of pocket for drugs
           each year before the plan starts sharing the cost.</li>
         <li id="copay"><strong>Copay</strong> — a fixed dollar amount per fill (for example, $10).</li>
@@ -157,7 +160,7 @@
   <!-- The out-of-pocket cap in the Catastrophic entry is rendered from /api/meta — the SAME statutory
        parameter the cost engine computes with — so the glossary and the math can't disagree. No cap
        amount or year is hardcoded in this page; without JS the sentence simply omits the parenthetical. -->
-  <script src="/format.js?v=28"></script>
+  <script src="/format.js?v=29"></script>
   <script>
     fetch('/api/meta').then(function (r) { return r.json(); }).then(function (m) {
       var t = window.PRFormat && PRFormat.capPhrase(m);

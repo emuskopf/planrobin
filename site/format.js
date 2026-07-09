@@ -158,7 +158,15 @@
     return dollars(meta.oopCapAnnual) + ' in ' + meta.planYear;
   }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase };
+  // A Medicare Advantage (MA-PD / regional MA-PD) plan? Works on the raw type ("MA","MA-regional")
+  // or the display label ("MA-PD","MA-PD (regional)") — all start with "MA"; a PDP never does.
+  function isMaPd(planType) { return /^MA/i.test(String(planType || '')); }
+  // The premium figure we show is the CMS Plan Information PREMIUM field. For a PDP that IS the whole
+  // premium; for an MA-PD it's only the Part D drug-coverage portion (the medical/Part C premium is
+  // separate and not in this file), so we label it honestly. See planrobin-premium-semantics.
+  function premiumLabel(planType) { return isMaPd(planType) ? 'drug coverage premium' : 'premium'; }
+
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);

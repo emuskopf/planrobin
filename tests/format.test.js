@@ -180,6 +180,16 @@ t('capPhrase renders "$2,100 in 2026" straight from the statutory parameter', ()
   assert.strictEqual(F.capPhrase(null), null);
 });
 
+t('premiumLabel qualifies MA-PD (drug-portion) but leaves PDP as the whole premium', () => {
+  // MA-PD in either raw or display form → "drug coverage premium"; PDP → plain "premium"
+  for (const t of ['MA-PD', 'MA-PD (regional)', 'MA', 'MA-regional']) {
+    assert.strictEqual(F.isMaPd(t), true, t);
+    assert.strictEqual(F.premiumLabel(t), 'drug coverage premium', t);
+  }
+  assert.strictEqual(F.isMaPd('PDP'), false);
+  assert.strictEqual(F.premiumLabel('PDP'), 'premium');
+});
+
 t('no user-facing page hardcodes a cap amount/year — the number comes only from the parameter', () => {
   const faq = fs.readFileSync(__dirname + '/../site/faq.html', 'utf8');
   const app = fs.readFileSync(__dirname + '/../site/app.js', 'utf8');
