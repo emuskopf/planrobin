@@ -4,6 +4,12 @@ PlanRobin is a free, non-commercial, **zero-LLM** Medicare Part D drug-cost chec
 live at planrobin.com. Everything is deterministic: every figure traces to a public CMS PUF row (or
 a documented statutory override); "NOT FOUND" is a valid, designed answer; nothing is invented.
 
+**`docs/00-PRINCIPLES.md` is the constitution — it governs all.** Everything here is subordinate to it
+and must read as an application of it (prime directive: the system never invents; it computes from
+verifiable sources and narrates what it computed). It's deliberately hard to change — amendments need a
+version bump, a written rationale, and a night's sleep. `CONTENT-RULES.md`, `UX-REVIEW.md`, and
+`site/DESIGN.md` implement it in their domains.
+
 Read `site/DESIGN.md` (design foundation), `UX-REVIEW.md` (UX judgment standard), and
 `CONTENT-RULES.md` (editorial law for all user-facing prose) before touching anything user-facing.
 
