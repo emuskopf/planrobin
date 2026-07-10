@@ -24,7 +24,13 @@ tells her "close this tab."
 Secondary reader: the **70-year-old parent, reading glasses off**, looking over her shoulder. If he
 can't read it at arm's length, it's too small.
 
+She visits because she's worried, not because she enjoys Medicare — **every screen's job is to leave
+her less uncertain than it found her.**
+
 The test for any change: *would this make her trust us more, or reach to close the tab?*
+
+Scope questions ("should we build/write this at all?") go to the roadmap's **FILTER**; this document
+governs how things look and read, not whether they ship.
 
 ---
 
@@ -77,6 +83,22 @@ skeletons not spinners, motion ≤120ms on hover/focus only.
   a **"Doesn't cover your medication" badge, not a `$0`**. A partial plan reads "$X · covers N of
   your M meds" and names the missing drug; it can never rank or advertise as comparable to a
   complete plan. (`[[project-planrobin-cost-breakdown]]`)
+
+- **NEVER leave a dead end.** Every error, warning, empty, or unsupported state answers "what should I
+  do next" with a concrete action — never a stop sign. (This generalizes the honest-states rule above:
+  honest words *and* a way forward.) *(Incidents: NOT FOUND states; the no-complete-plans note; the
+  rural preferred-pharmacy fallback design, 2026-07-08.)*
+
+- **PREFER: every recommendation explains itself — why this, and what to do next.** A recommendation
+  without its reason and its action is incomplete. *(Incident: the wedge action plan — each action
+  carries its dollar figure and its how, 2026-07-08.)*
+
+- **NEVER ask for input that doesn't change the answer — decision friction is a bug.** If collecting it
+  doesn't improve the recommendation, don't collect it. *(Incidents: no name field on capture; the
+  skippable router; the wedge skipping the 82-plan comparison, 2026-07-08.)*
+
+- **PREFER: buttons do what they say.** Labels match actions, downloads are labeled, optional means
+  visibly optional. Surprise erodes trust faster than a visual defect. *(2026-07-08.)*
 
 - **Trade-off honesty — numbers that need context get it.** Coinsurance is estimated from her
   quantity and labelled as such; a coinsurance drug with no published price stays *out* of the total
@@ -141,6 +163,14 @@ hand too because a mechanism can reappear in a new component:
    `statutory-params.js` → `/api/meta` → `PRFormat.capPhrase()` into both the FAQ glossary and the
    in-app tooltip; no page hardcodes a cap amount or year, and a test (`tests/meta.test.js` +
    `tests/format.test.js`) asserts it.
+11. **Success tunnel vision — review the failure states FIRST.** Walk no-results, partial coverage,
+   unsupported cases, and slow-network *before* the happy path. The happy path gets all the attention;
+   the bugs hide in the states nobody opens first. *(Incident: the fake-$0 partial-coverage bug lived in
+   a failure state no one had reviewed first. 2026-07-08.)*
+12. **Returning-user amnesia — review every flow for the person coming back next fall.** The annual
+   return IS the business model; she should not have to relearn the product each year. Share links
+   rerun against *current* data, not a frozen snapshot; the printed page invites her to "bring this out
+   in October." *(Incidents: share-link restore-and-rerun; the passport reopen paths. 2026-07-08.)*
 
 ---
 
@@ -167,6 +197,11 @@ The suite (`tests/ux/floors.js`) encodes these, matching `site/DESIGN.md`:
 
 Matrix: every page + major state × {360px, 412px} × {default, 200% large-font}.
 
+**The five-minute floor** *(manual benchmark — the suite can't time end-to-end task completion, so this
+one is checked by hand):* a first-time user completes a full check — entry through printed/saved result
+— in about five minutes. Test with a stopwatch on real persona tasks; a flow that can't be finished in
+~5 minutes gets flagged, not shipped. *(2026-07-08.)*
+
 ---
 
 ## Ruling log
@@ -178,3 +213,13 @@ Matrix: every page + major state × {360px, 412px} × {default, 200% large-font}
   crush). Fix: suggestions + chips stack on narrow with a 12ch readable minimum; glossary and
   breakdown rows got the same treatment; off-formulary drugs now carry the "not on MO plans" badge
   onto the chip too.
+- *2026-07-07* — Failure pattern #10 (welded explainer sentences / hardcoded numbers in prose) + the
+  rule "every number in explainer prose renders from the same parameter the engine computes with."
+- *2026-07-08* — Merged Evan-blessed adopted additions alongside committing the sibling `CONTENT-RULES.md`:
+  **persona** — the distilled "leave her less uncertain than it found her" line + the scope→FILTER
+  pointer (the "trust us more / close the tab" tie-breaker was already promoted beside the persona, so
+  it was kept, not duplicated); **copy rules** — never-a-dead-end, recommendation-explains-itself,
+  decision-friction-is-a-bug, buttons-do-what-they-say; **failure patterns** — #11 success tunnel
+  vision (review failure states first) + #12 returning-user amnesia (the annual return is the business
+  model); **floors** — the five-minute floor (manual stopwatch benchmark). Consolidated the dead-end
+  rule against the existing honest-states rule rather than duplicating.
