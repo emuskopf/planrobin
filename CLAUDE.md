@@ -4,27 +4,36 @@ PlanRobin is a free, non-commercial, **zero-LLM** Medicare Part D drug-cost chec
 live at planrobin.com. Everything is deterministic: every figure traces to a public CMS PUF row (or
 a documented statutory override); "NOT FOUND" is a valid, designed answer; nothing is invented.
 
-Read `site/DESIGN.md` (design foundation) and `UX-REVIEW.md` (UX judgment standard) before touching
-anything user-facing.
+Read `site/DESIGN.md` (design foundation), `UX-REVIEW.md` (UX judgment standard), and
+`CONTENT-RULES.md` (editorial law for all user-facing prose) before touching anything user-facing.
 
-## Standing UX self-review hook — REQUIRED
+## Standing self-review hooks — REQUIRED
 
-**Every session that touches UI or user-facing copy must, before declaring the work done, run a
-self-review of its own diff against `UX-REVIEW.md` at 360px + large font, and list the findings in
-the session report (either "UX review: pass" or an itemized list).** This is not optional and comes
-*before* the "done" claim.
+Both hooks run a self-review of the session's own diff *before* the "done" claim, with the findings
+listed in the session report. Neither is optional.
 
-Two layers back this up:
+1. **UI / user-facing copy → `UX-REVIEW.md`.** Every session that touches UI or user-facing copy
+   self-reviews its diff against `UX-REVIEW.md` (UX judgment) at 360px + large font, reporting either
+   "UX review: pass" or an itemized list.
+2. **Any session that produces prose → `CONTENT-RULES.md`.** Every session that writes prose (content,
+   articles, FAQ entries, the booklet, email copy, and UI microcopy where it overlaps `UX-REVIEW.md`)
+   self-reviews against `CONTENT-RULES.md` (editorial law), with **the PlanRobin Test — is it true?
+   useful? understandable? calmer than the alternatives? — as the stated preflight** before that
+   review; report the findings. A **NEVER** rule cannot ship; a **PREFER** rule flags for Evan
+   (proceed if judged fine).
+
+Two layers back these up:
 1. **Mechanical floors — the UX floor suite** (`tests/ux/`, Playwright): no-overlap, no-horizontal-
    overflow, AA contrast, ≥44px touch targets, visible focus, and the type floor, across every page
    and major state × {360, 412}px × {default, 200% large-font}. It gates every deploy alongside
    `npm test`. Run it with `npm run test:ux`. If you add a page or a major UI state, add it to
    `tests/ux/ux-floor.spec.js`; if you change the API shape, rebuild fixtures with
    `node tests/ux/build-fixtures.js` (dev server running).
-2. **Judgment — `UX-REVIEW.md`**: persona, brand (calm/sturdy/unhurried), copy rules, and the
-   known-failure-pattern list. The suite can't catch overpromising copy, mental-math number lines,
-   or a `$0` shown for a meaningless case — the self-review must. **Evan edits `UX-REVIEW.md`
-   directly; treat his edits as canon. Append new rulings with a date; never silently rewrite his.**
+2. **Judgment — `UX-REVIEW.md` + `CONTENT-RULES.md`**: persona, brand (calm/sturdy/unhurried), copy
+   rules, editorial law, and the known-failure-pattern list. The suite can't catch overpromising copy,
+   mental-math number lines, or a `$0` shown for a meaningless case — the self-review must. **Both are
+   living documents — append-only, dated, incident-linked. Evan edits them directly; treat his edits
+   as canon; never silently rewrite them.**
 
 ## Deploy / gates
 - `npm test` — deterministic node suite (format, share, overrides, channels, pricing, zip) + the

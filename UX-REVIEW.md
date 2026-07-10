@@ -7,7 +7,9 @@ specific failure patterns we've been personally burned by. **Every session that 
 user-facing copy self-reviews its diff against this file at 360px + large font before declaring
 done** (see the standing hook in `CLAUDE.md`).
 
-Evan edits this file directly; his edits are canon. New rulings get appended with a date.
+**Living document — append-only, dated, incident-linked. Evan edits this file directly; his edits are
+canon; never silently rewrite them.** Its sibling is `CONTENT-RULES.md` (editorial law for all
+user-facing prose); this file is the UX / interaction judgment layer. New rulings get appended with a date.
 
 ---
 
