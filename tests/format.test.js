@@ -231,49 +231,110 @@ t('roadOf: an MA-PD (any variant) is the MA road; a PDP is the Original-Medicare
   assert.strictEqual(F.roadOf('PDP'), 'original');
 });
 
-t('roadFromPlanId: H/R = Medicare Advantage road, S = Original-Medicare road, else null', () => {
-  assert.strictEqual(F.roadFromPlanId('H1234-001'), 'ma');
-  assert.strictEqual(F.roadFromPlanId('R5826-002'), 'ma');
-  assert.strictEqual(F.roadFromPlanId('s5601-002'), 'original');  // case-insensitive
-  assert.strictEqual(F.roadFromPlanId(' H1234-001 '), 'ma');      // trimmed
-  for (const bad of ['', null, undefined, '1234', 'X1-1']) assert.strictEqual(F.roadFromPlanId(bad), null, String(bad));
+t('plan-ID shape: forgiving of spaces and case; prefix stays quiet until it can’t be valid', () => {
+  assert.strictEqual(F.normalizePlanId(' h1234-001 '), 'H1234-001');
+  for (const ok of ['H1234-001', 'h1234-001', ' S5601-002 ', 'R5826-123']) assert.strictEqual(F.isPlanIdShape(ok), true, ok);
+  for (const no of ['', 'H1234', 'H1234-01', 'HH234-001', '1234-001', 'H12345-001']) assert.strictEqual(F.isPlanIdShape(no), false, no);
+  // still-typing prefixes must NOT be nagged at
+  for (const p of ['H', 'H1', 'H1234', 'H1234-', 'H1234-0']) assert.strictEqual(F.isPlanIdPrefix(p), true, p);
+  for (const p of ['HH', 'H1234-0011', 'XY']) assert.strictEqual(F.isPlanIdPrefix(p), false, p);
 });
 
-t('partitionByRoad NEVER drops a plan and preserves the incoming order (ranking underneath untouched)', () => {
+t('groupPlans NEVER drops a plan and preserves the incoming order (ranking underneath untouched)', () => {
   const plans = [maPlan('H1'), pdpPlan('S1'), maPlan('H2'), pdpPlan('S2')];
   for (const road of ['ma', 'original']) {
-    const p = F.partitionByRoad(plans, road);
-    assert.strictEqual(p.grouped, true);
+    const g = F.groupPlans(plans, { road });
+    assert.strictEqual(g.grouped, true);
+    assert.strictEqual(g.yourPlan, null);
     // every plan survives, exactly once
-    assert.strictEqual(p.same.length + p.other.length, plans.length, road);
-    assert.deepStrictEqual([...p.same, ...p.other].map((x) => x.planId).sort(), ['H1', 'H2', 'S1', 'S2'], road);
+    const seen = [g.yourPlan, ...g.sameRoadOthers, ...g.otherRoad].filter(Boolean);
+    assert.strictEqual(seen.length, plans.length, road);
+    assert.deepStrictEqual(seen.map((x) => x.planId).sort(), ['H1', 'H2', 'S1', 'S2'], road);
     // order within each group is the order it arrived in
-    assert.deepStrictEqual(p.same.map((x) => x.planId), road === 'ma' ? ['H1', 'H2'] : ['S1', 'S2'], road);
-    assert.deepStrictEqual(p.other.map((x) => x.planId), road === 'ma' ? ['S1', 'S2'] : ['H1', 'H2'], road);
-    // the same-road group really is all one road
-    assert.ok(p.same.every((x) => F.roadOf(x.planType) === road), road);
+    assert.deepStrictEqual(g.sameRoadOthers.map((x) => x.planId), road === 'ma' ? ['H1', 'H2'] : ['S1', 'S2'], road);
+    assert.deepStrictEqual(g.otherRoad.map((x) => x.planId), road === 'ma' ? ['S1', 'S2'] : ['H1', 'H2'], road);
+    assert.ok(g.sameRoadOthers.every((x) => F.roadOf(x.planType) === road), road);
   }
 });
 
-t('partitionByRoad keeps complete-before-partial inside each group (the partition beneath is intact)', () => {
-  // arrives ranked: complete first, then partial (PRFormat.planRank)
+t('groupPlans keeps complete-before-partial inside each group (the partition beneath is intact)', () => {
   const plans = [maPlan('H1', 0), pdpPlan('S1', 0), maPlan('H2', 2), pdpPlan('S2', 1)];
-  const p = F.partitionByRoad(plans, 'ma');
-  assert.deepStrictEqual(p.same.map((x) => x.notCovered), [0, 2], 'MA group still complete-then-partial');
-  assert.deepStrictEqual(p.other.map((x) => x.notCovered), [0, 1], 'PDP group still complete-then-partial');
+  const g = F.groupPlans(plans, { road: 'ma' });
+  assert.deepStrictEqual(g.sameRoadOthers.map((x) => x.notCovered), [0, 2], 'MA group still complete-then-partial');
+  assert.deepStrictEqual(g.otherRoad.map((x) => x.notCovered), [0, 1], 'PDP group still complete-then-partial');
 });
 
 t('no known road ("new", "not sure", null) → no grouping; every plan stays in one list', () => {
   const plans = [maPlan('H1'), pdpPlan('S1')];
   for (const road of [null, undefined, 'new', 'unsure', 'nonsense']) {
-    const p = F.partitionByRoad(plans, road);
-    assert.strictEqual(p.grouped, false, String(road));
-    assert.strictEqual(p.same.length, 2, String(road));
-    assert.strictEqual(p.other.length, 0, String(road));
+    const g = F.groupPlans(plans, { road });
+    assert.strictEqual(g.grouped, false, String(road));
+    assert.strictEqual(g.sameRoadOthers.length, 2, String(road));
+    assert.strictEqual(g.otherRoad.length, 0, String(road));
     assert.strictEqual(F.isKnownRoad(road), false, String(road));
   }
   assert.strictEqual(F.isKnownRoad('ma'), true);
   assert.strictEqual(F.isKnownRoad('original'), true);
+});
+
+t('a matching plan ID EXTRACTS her plan, defines the road, and still drops nobody', () => {
+  const plans = [maPlan('H1234-001', 0), pdpPlan('S5601-002', 0), maPlan('H9999-001', 3)];
+  const g = F.groupPlans(plans, { planId: ' h1234-001 ' });   // spaces/case forgiven
+  assert.strictEqual(g.yourPlan.planId, 'H1234-001');
+  assert.strictEqual(g.planIdMissed, false);
+  assert.strictEqual(g.road, 'ma', 'the matched plan defines the road — no answer needed');
+  assert.strictEqual(g.grouped, true);
+  assert.deepStrictEqual(g.sameRoadOthers.map((x) => x.planId), ['H9999-001'], 'her plan is EXTRACTED from its group');
+  assert.deepStrictEqual(g.otherRoad.map((x) => x.planId), ['S5601-002']);
+  // nothing lost
+  assert.strictEqual(1 + g.sameRoadOthers.length + g.otherRoad.length, plans.length);
+});
+
+t('her plan is extracted even when it is the WORST plan (placement is exempt, honesty is not)', () => {
+  const plans = [maPlan('H1111-001', 0), maPlan('H2222-002', 5)];  // hers covers nothing
+  const g = F.groupPlans(plans, { planId: 'H2222-002' });
+  assert.strictEqual(g.yourPlan.planId, 'H2222-002');
+  assert.strictEqual(g.yourPlan.notCovered, 5, 'the plan object is untouched — the card renders it honestly');
+  assert.deepStrictEqual(g.sameRoadOthers.map((x) => x.planId), ['H1111-001']);
+});
+
+t('a well-formed ID we cannot match → planIdMissed, and it does NOT invent a road', () => {
+  const plans = [maPlan('H1234-001'), pdpPlan('S5601-002')];
+  const g = F.groupPlans(plans, { planId: 'H7777-777' });
+  assert.strictEqual(g.yourPlan, null);
+  assert.strictEqual(g.planIdMissed, true);
+  assert.strictEqual(g.grouped, false, 'no road assumed from a plan we could not find');
+  assert.strictEqual(g.sameRoadOthers.length, 2, 'results still render, ungrouped-by-ID');
+  // but a road she chose herself still groups
+  const g2 = F.groupPlans(plans, { planId: 'H7777-777', road: 'original' });
+  assert.strictEqual(g2.planIdMissed, true);
+  assert.strictEqual(g2.grouped, true);
+  assert.deepStrictEqual(g2.sameRoadOthers.map((x) => x.planId), ['S5601-002']);
+});
+
+console.log('\nThe headline count speaks the grouping (one source of truth):');
+
+t('count line: no road → a plain total; grouped → both real numbers, her plan counted in her road', () => {
+  const plans = [maPlan('H1'), maPlan('H2'), pdpPlan('S1'), pdpPlan('S2'), pdpPlan('S3')];
+  assert.strictEqual(F.resultsCountLine(F.groupPlans(plans, {}), 'St. Louis County'), '5 plans');
+  assert.strictEqual(F.resultsCountLine(F.groupPlans(plans, { road: 'ma' }), 'St. Louis County'),
+    '2 Medicare Advantage plans in St. Louis County — plus 3 drug-only plans on a different road, below');
+  assert.strictEqual(F.resultsCountLine(F.groupPlans(plans, { road: 'original' }), 'St. Louis County'),
+    '3 drug-only plans in St. Louis County — plus 2 Medicare Advantage plans on a different road, below');
+});
+
+t('count line counts her extracted plan inside her own road (it IS one of them)', () => {
+  const plans = [maPlan('H1234-001'), maPlan('H2'), pdpPlan('S1')];
+  const g = F.groupPlans(plans, { planId: 'H1234-001' });
+  assert.strictEqual(F.resultsCountLine(g, 'Boone County'),
+    '2 Medicare Advantage plans in Boone County — plus 1 drug-only plan on a different road, below');
+});
+
+t('count line is count-aware (no "1 plans"), and drops the clause when a road stands alone', () => {
+  assert.strictEqual(F.resultsCountLine(F.groupPlans([maPlan('H1')], {}), 'X'), '1 plan');
+  // only one road present → nothing to say about "a different road"
+  assert.strictEqual(F.resultsCountLine(F.groupPlans([maPlan('H1')], { road: 'ma' }), 'Boone County'),
+    '1 Medicare Advantage plan in Boone County');
 });
 
 t('roadsMix: true only when BOTH roads are present', () => {

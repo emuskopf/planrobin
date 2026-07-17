@@ -162,15 +162,27 @@ function wireRoad() {
       setRoad(road, ROAD_STATUS[road] || null);
     });
   }
-  // Precision shortcut: the first letter of a CMS plan ID says which road she's on (H/R = Medicare
-  // Advantage; S = a stand-alone drug plan, which only exists alongside Original Medicare).
+
+  // The plan ID ANCHORS the results: a complete, well-formed ID is matched against her results and,
+  // if found, her plan renders first. We don't infer a road from an ID we couldn't match — if we
+  // can't find the plan, we don't assume things about it; the not-found note asks her to pick a road.
   const idInput = $('#road-plan-id');
+  const idNote = $('#road-planid-hint');
   idInput.addEventListener('input', () => {
-    const v = idInput.value.trim();
-    if (!v) { setRoad(null, null); return; }
-    const road = PRFormat.roadFromPlanId(v);
-    if (road) setRoad(road, ROAD_STATUS[road]);
-    else setRoad(null, 'That doesn’t look like a plan ID yet — they start with a letter, like H1234-001 or S5601-002.');
+    const raw = idInput.value;
+    const v = PRFormat.normalizePlanId(raw);
+    let hint = '';
+    if (!v) state.planId = null;
+    else if (PRFormat.isPlanIdShape(v)) state.planId = v;
+    else {
+      state.planId = null;
+      // Incremental + friendly: stay quiet while it could still become a valid ID; only speak up once
+      // it can't. Spaces and case are already forgiven by normalizePlanId.
+      if (!PRFormat.isPlanIdPrefix(v)) hint = 'Plan IDs look like H1234-001: a letter, four digits, a dash, three digits.';
+    }
+    idNote.textContent = hint;
+    idNote.hidden = !hint;
+    if (state.lastData) renderResults(state.lastData);
   });
 }
 
@@ -437,10 +449,12 @@ function renderResults(data) {
   state.lastData = data;
   updateFragment(); // keep the address bar a shareable/bookmarkable link
   const box = $('#results'); box.innerHTML = '';
+  // ONE grouping definition drives the list AND the count, so the number can't contradict the layout.
+  const group = PRFormat.groupPlans(data.plans, { road: state.road, planId: state.planId });
   box.append(el('h2', {}, `Plans in ${data.county.name}, ${data.county.state}`));
   const d = data.meta && data.meta.ingestedAt ? new Date(data.meta.ingestedAt) : null;
   box.append(el('div', { className: 'result-meta' }, [
-    el('span', { className: 'muted small', textContent: `${data.planCount} plans · sorted by estimated annual cost` }),
+    el('span', { className: 'muted small', textContent: `${PRFormat.resultsCountLine(group, data.county.name)} · sorted by estimated annual cost` }),
     el('span', { className: 'muted small', textContent: data.meta && data.meta.quarter ? `Data: CMS ${data.meta.quarter}${d ? ', loaded ' + d.toLocaleDateString() : ''}` : '' }),
   ]));
   if (state.restoredFromLink) {
@@ -464,16 +478,39 @@ function renderResults(data) {
     box.append(el('div', { className: 'no-complete-note' }, [ic('cross'), el('span', { textContent: noteMsg })]));
   }
 
-  // Two roads: when we know the reader's road, plans like theirs come first and the other road sits
-  // below a plain divider. Grouping NEVER filters — every plan renders, fully priced, either way.
-  const part = PRFormat.partitionByRoad(data.plans, state.road);
-  const sameNote = part.grouped ? renderRoadGroupNote(state.road) : null;
-  if (sameNote && part.same.length) box.append(sameNote);
-  renderPlanPartition(box, part.same);
-  if (part.grouped && part.other.length) {
-    box.append(renderRoadDivider(state.road));
-    renderPlanPartition(box, part.other);
+  // Her plan, when she gave us an ID we could match: EXTRACTED and rendered first, unconditionally —
+  // even if it's the worst plan in the county. Its treatment is never softened, though: a partial or
+  // zero-coverage plan of hers shows exactly the badges any other card would. Her plan failing her,
+  // shown first and plainly, is the most valuable render this page has.
+  if (group.yourPlan) box.append(renderPlan(group.yourPlan, { yours: true }));
+  // A real-looking ID we couldn't find is a designed state, never silence and never an error tone.
+  if (group.planIdMissed) box.append(renderPlanIdMissed(data));
+
+  // The rest: her road first, then the other road below a plain divider. Grouping NEVER filters —
+  // every plan renders, fully priced, either way.
+  if (group.grouped) {
+    const note = renderRoadGroupNote(group.road);
+    if (note && group.sameRoadOthers.length) box.append(note);
+    if (group.yourPlan && group.sameRoadOthers.length) {
+      box.append(el('h3', { className: 'group-head', textContent:
+        `Other ${PRFormat.ROAD_NOUN[group.road]} plans in your county` }));
+    }
+    renderPlanPartition(box, group.sameRoadOthers);
+    if (group.otherRoad.length) {
+      box.append(renderRoadDivider(group.road));
+      renderPlanPartition(box, group.otherRoad);
+    }
+  } else {
+    renderPlanPartition(box, group.sameRoadOthers);
   }
+}
+
+// A well-formed ID that isn't in this county's results. Say what we looked for, why it might miss,
+// and give her two ways forward — never a dead end, never an alarm.
+function renderPlanIdMissed(data) {
+  return el('div', { className: 'planid-missed', role: 'note' }, [
+    el('span', { textContent: `We couldn’t find ${state.planId} among ${data.county.name}’s plans. Double-check the ID on the card — or it may be a plan offered in a different county or state. You can still choose your road above, or search without it.` }),
+  ]);
 }
 
 // Plans covering ALL your drugs first, then a divider, then the rest. Unchanged logic — just
@@ -584,7 +621,11 @@ const planTypeSlug = (label) => (label && label.startsWith('PDP')) ? 'pdp' : 'ma
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function renderPlan(p) {
+// opts.yours — this is the plan whose ID she typed. It gets a badge and its placement is decided by
+// the caller (first, always). Everything else about the card is IDENTICAL to any other plan's: the
+// honesty treatment is never softened because the plan happens to be hers.
+function renderPlan(p, opts) {
+  opts = opts || {};
   const cov = PRFormat.planCoverage(p);
   // Anchor. Complete plans: whole-dollar total + "est. per year" (with the standard-pharmacy
   // qualifier when a savings line fires). Partial plans (some covered): total for the covered drugs
@@ -627,7 +668,13 @@ function renderPlan(p) {
     ]),
     annual,
   ]);
-  const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') }, [head]);
+  const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') + (opts.yours ? ' plan-yours' : '') }, [head]);
+  // "Your plan" — semantic (icon + word + color), sentence case, never a shout.
+  if (opts.yours) {
+    const badge = el('div', { className: 'yours-badge' });
+    badge.append(ic('save'), el('span', { textContent: 'Your plan' }));
+    card.insertBefore(badge, head);
+  }
   // Loud partial-coverage flag — names the missing drug(s). Only for plans covering SOME of your
   // drugs; a zero-coverage plan already says so in its anchor (and every drug row below is "not covered").
   if (!cov.complete && cov.covered > 0) {
@@ -638,7 +685,7 @@ function renderPlan(p) {
   }
   const sav = renderSavings(p); // null on partial plans (API suppresses it)
   if (sav) card.append(sav);
-  card.append(renderBreakdown(p));
+  card.append(renderBreakdown(p, opts));
   for (const [rxcui, meta] of state.drugs) card.append(renderDrugRow(rxcui, meta, p.drugs[rxcui]));
   return card;
 }
@@ -647,9 +694,11 @@ function renderPlan(p) {
 // Premium + flat copays + coinsurance-estimated make up the total (which stops at the annual OOP cap).
 // Coinsurance is estimated from the quantity you picked; a coinsurance drug with no published
 // price, and any not-covered drug, are shown by name and never folded in as a fake number.
-function renderBreakdown(p) {
+// opts.yours → open by default. It's the one plan she came here to understand; making her tap for it
+// would be decision friction on the single most valuable card. Every other card stays one tap away.
+function renderBreakdown(p, opts) {
   const b = p.breakdown || {};
-  const wrap = el('details', { className: 'breakdown' });
+  const wrap = el('details', { className: 'breakdown', open: !!(opts && opts.yours) });
   wrap.append(el('summary', { textContent: 'See what’s included in this total' }));
   const rows = el('div', { className: 'bd-rows' });
   const line = (label, value, cls) => {

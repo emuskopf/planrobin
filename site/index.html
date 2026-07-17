@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="preload" as="font" type="font/woff2" href="/fonts/source-serif-4-latin.woff2" crossorigin />
-  <link rel="stylesheet" href="/styles.css?v=31" />
+  <link rel="stylesheet" href="/styles.css?v=32" />
 </head>
 <body>
   <header class="site-header">
@@ -107,16 +107,18 @@
       </div>
       <div id="road-status" class="road-status" aria-live="polite"></div>
 
-      <details id="road-planid">
-        <summary>or type the plan ID from your insurance card (like H1234-001)</summary>
+      <!-- Always visible, never behind a disclosure: a link that reveals a box reads as a link, and
+           this audience won't hunt for it. Secondary to the road buttons, not hidden from them. -->
+      <div id="road-planid">
         <label class="field" for="road-plan-id">
-          <span class="label">Plan ID from your card</span>
-          <input id="road-plan-id" type="text" autocomplete="off" placeholder="e.g. H1234-001"
+          <span class="label">Or type the <span class="term" title="This is the plan’s official Medicare ID — it’s printed on the plan’s membership card, and it’s the surest way to confirm you’re looking at the right plan.">plan ID</span> from your insurance card (like H1234-001)</span>
+          <input id="road-plan-id" type="text" autocomplete="off" inputmode="text" placeholder="e.g. H1234-001"
                  aria-describedby="road-planid-note" aria-label="Plan ID from your insurance card" />
         </label>
-        <p id="road-planid-note" class="fine muted">We use the first letter only, to tell which kind of plan
-          you have. It isn’t sent anywhere.</p>
-      </details>
+        <p id="road-planid-hint" class="planid-hint" role="status" hidden></p>
+        <p id="road-planid-note" class="fine muted">It’s printed on your plan’s membership card. We match it
+          against your results here in your browser, to show your plan first — it isn’t sent anywhere.</p>
+      </div>
     </section>
 
     <div class="actions">
@@ -176,10 +178,10 @@
     </div>
   </footer>
 
-  <script src="/format.js?v=31"></script>
-  <script src="/share.js?v=31"></script>
-  <script src="/passport.js?v=31"></script>
-  <script src="/vendor/qrcode.js?v=31"></script>
-  <script src="/app.js?v=31"></script>
+  <script src="/format.js?v=32"></script>
+  <script src="/share.js?v=32"></script>
+  <script src="/passport.js?v=32"></script>
+  <script src="/vendor/qrcode.js?v=32"></script>
+  <script src="/app.js?v=32"></script>
 </body>
 </html>

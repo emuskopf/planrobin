@@ -167,28 +167,74 @@
   // not interchangeable: enrolling in a PDP while on an MA plan disenrolls you from the MA plan and
   // returns you to Original Medicare (Medicare.gov, "Switch, drop, or rejoin drug coverage").
   function roadOf(planType) { return isMaPd(planType) ? 'ma' : 'original'; }
-  // The user's road, from the answer they gave — or inferred from a plan ID they typed. CMS contract
-  // prefixes: H/R = Medicare Advantage → they're on the MA road; S = stand-alone PDP → a PDP only
-  // exists alongside Original Medicare, so they're on the Original-Medicare road.
-  function roadFromPlanId(planId) {
-    const c = String(planId || '').trim().charAt(0).toUpperCase();
-    if (c === 'H' || c === 'R') return 'ma';
-    if (c === 'S') return 'original';
-    return null;
-  }
   // Only a KNOWN current road can group results; "new to Medicare" and "not sure" have no road yet.
   const KNOWN_ROADS = ['ma', 'original'];
   function isKnownRoad(road) { return KNOWN_ROADS.indexOf(road) !== -1; }
-  // Split plans into [sameRoad, otherRoad] WITHOUT dropping any — grouping never filters. Order
-  // within each group is preserved, so the complete-vs-partial ranking underneath is untouched.
-  function partitionByRoad(plans, road) {
-    const all = plans || [];
-    if (!isKnownRoad(road)) return { same: all.slice(), other: [], grouped: false };
+
+  // A CMS plan ID as printed on a membership card: a letter, four digits, a dash, three digits
+  // ("H1234-001"). Spaces and case are ignored — she's reading it off a card, not typing a key.
+  const PLAN_ID_RE = /^[A-Z]\d{4}-\d{3}$/;
+  const PLAN_ID_PREFIX_RE = /^[A-Z]?\d{0,4}-?\d{0,3}$/; // still could BECOME valid → don't nag yet
+  function normalizePlanId(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase(); }
+  function isPlanIdShape(v) { return PLAN_ID_RE.test(normalizePlanId(v)); }
+  function isPlanIdPrefix(v) { return PLAN_ID_PREFIX_RE.test(normalizePlanId(v)); }
+
+  // ---- THE grouping definition (one source of truth) ---------------------------------------------
+  // Everything that needs to know "which plans go where" reads THIS: the rendered list, the headline
+  // count, and (next) the checkup. Three buckets, and it NEVER filters — every input plan lands in
+  // exactly one bucket, order preserved, so the complete-vs-partial ranking underneath is untouched.
+  //
+  //   yourPlan        the plan whose ID she typed, EXTRACTED from its group (renders first, always)
+  //   sameRoadOthers  the rest of the plans on her road
+  //   otherRoad       the plans on the other road (never hidden — just below a divider)
+  //
+  // Her road comes from the plan we matched (authoritative) or, failing that, from what she told us.
+  // A well-formed ID we could NOT match does not imply a road: if we can't find the plan, we don't
+  // assume things about it — the UI asks her to pick a road instead.
+  function groupPlans(plans, opts) {
+    opts = opts || {};
+    const all = (plans || []).slice();
+    const wanted = opts.planId ? normalizePlanId(opts.planId) : '';
+    let yourPlan = null, rest = all;
+    if (wanted) {
+      const i = all.findIndex((p) => normalizePlanId(p && p.planId) === wanted);
+      if (i !== -1) { yourPlan = all[i]; rest = all.slice(0, i).concat(all.slice(i + 1)); }
+    }
+    const road = yourPlan ? roadOf(yourPlan.planType) : opts.road;
+    // planIdMissed: she gave us a real-looking ID and it isn't in this county's results — a designed
+    // state, not an error (see the not-found note).
+    const planIdMissed = !!wanted && !yourPlan;
+    if (!isKnownRoad(road)) {
+      return { yourPlan, sameRoadOthers: rest, otherRoad: [], grouped: false, road: null, planIdMissed };
+    }
     return {
-      same: all.filter((p) => roadOf(p.planType) === road),
-      other: all.filter((p) => roadOf(p.planType) !== road),
+      yourPlan,
+      sameRoadOthers: rest.filter((p) => roadOf(p.planType) === road),
+      otherRoad: rest.filter((p) => roadOf(p.planType) !== road),
       grouped: true,
+      road,
+      planIdMissed,
     };
+  }
+
+  // What we call each road's plans, in her words.
+  const ROAD_NOUN = { ma: 'Medicare Advantage', original: 'drug-only' };
+  const otherRoadOf = (road) => (road === 'ma' ? 'original' : 'ma');
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  // The headline count, spoken in the SAME grouping the page renders — so the number can never
+  // contradict the layout. Her own plan is counted inside her road's total (it IS one of them).
+  function resultsCountLine(group, countyName) {
+    const g = group || {};
+    const total = (g.yourPlan ? 1 : 0) + (g.sameRoadOthers || []).length + (g.otherRoad || []).length;
+    if (!g.grouped) return plural(total, 'plan', 'plans');
+    const sameN = (g.yourPlan ? 1 : 0) + (g.sameRoadOthers || []).length;
+    const otherN = (g.otherRoad || []).length;
+    const where = countyName ? ` in ${countyName}` : '';
+    const same = plural(sameN, `${ROAD_NOUN[g.road]} plan`, `${ROAD_NOUN[g.road]} plans`) + where;
+    if (!otherN) return same;
+    const other = plural(otherN, `${ROAD_NOUN[otherRoadOf(g.road)]} plan`, `${ROAD_NOUN[otherRoadOf(g.road)]} plans`);
+    return `${same} — plus ${other} on a different road, below`;
   }
   // Do both roads appear in this result set? (Premium comparability + the "both kinds" line hang on this.)
   function roadsMix(plans) {
@@ -216,7 +262,8 @@
   function premiumLabel(planType) { return isMaPd(planType) ? 'drug coverage premium' : 'premium'; }
 
   const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel,
-    roadOf, roadFromPlanId, isKnownRoad, partitionByRoad, roadsMix, HEADLINE_BASIS, headlineAnnual };
+    roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
+    normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);

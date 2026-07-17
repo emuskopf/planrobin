@@ -41,6 +41,14 @@ const STATES = [
   { name: 'results-road-ma', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.click('.road-choice[data-road="ma"]'); await H.runToResults(page); await page.waitForSelector('.road-divider'); } },
   // Original-Medicare road: the "choose by price alone" note + the other road below the divider.
   { name: 'results-road-original', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.click('.road-choice[data-road="original"]'); await H.runToResults(page); await page.waitForSelector('.road-divider'); } },
+  // A typed plan ID anchors her plan first as a distinct card, breakdown open by default.
+  { name: 'results-your-plan', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'H2041-001'); await H.runToResults(page); await page.waitForSelector('.plan-yours'); } },
+  // Her plan covering NOTHING, still first — placement exempt, honesty not.
+  { name: 'results-your-plan-zero', results: 'results-zero.json', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'H2041-001'); await H.runToResults(page); await page.waitForSelector('.plan-yours'); } },
+  // A real-looking ID that isn't in this county — the designed not-found state, results beneath.
+  { name: 'results-planid-missed', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'H7777-777'); await H.runToResults(page); await page.waitForSelector('.planid-missed'); } },
+  // Malformed input — the friendly incremental hint.
+  { name: 'entry-planid-malformed', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'HH99'); await page.waitForSelector('.planid-hint:not([hidden])'); } },
   { name: 'faq', async setup(page) { await page.goto('/faq.html'); } },
   { name: 'story', async setup(page) { await page.goto('/story.html'); } },
 ];
