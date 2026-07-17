@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="preload" as="font" type="font/woff2" href="/fonts/source-serif-4-latin.woff2" crossorigin />
-  <link rel="stylesheet" href="/styles.css?v=27" />
+  <link rel="stylesheet" href="/styles.css?v=32" />
 </head>
 <body>
   <header class="site-header">
@@ -40,11 +40,53 @@
           coverage. It's an all-in-one plan (medical + drugs) that replaces Original Medicare,
           usually run by a private insurer. <strong>MA-PD plans may also have a separate medical
           premium that we don't show</strong> — the premium in our results is the drug-coverage
-          portion, which is what matters for comparing drug costs.</li>
+          portion, which is what matters for comparing drug costs. <strong>Joining a stand-alone drug
+          plan (PDP) would end this plan</strong> and return you to Original Medicare — see below.</li>
         <li id="pdp"><strong>PDP</strong> — a stand-alone Prescription Drug Plan you add on top
-          of Original Medicare, just for drug coverage.</li>
+          of Original Medicare, just for drug coverage. Your medical coverage stays with Original
+          Medicare. <strong>If you have a Medicare Advantage plan, joining one of these ends that
+          plan</strong> and returns you to Original Medicare — see below.</li>
       </ul>
-      <p class="muted small">Full article coming soon.</p>
+
+      <div id="two-roads">
+        <h3>Two roads — and why they aren't interchangeable</h3>
+        <p>Almost everyone on Medicare is on one of two roads. They are not two flavors of the same
+          thing, and moving between them is not a drug-only decision:</p>
+        <ul>
+          <li><strong>Original Medicare</strong> — the federal program (Parts A and B) for your medical
+            care. Drug coverage is added separately, with a <strong>stand-alone drug plan (PDP)</strong>.
+            Many people also buy a <strong>Medigap</strong> policy to help with what Original Medicare
+            doesn't pay.</li>
+          <li><strong>Medicare Advantage (MA-PD)</strong> — one all-in-one plan from a private insurer
+            that <em>replaces</em> Original Medicare and usually includes drugs. Medigap doesn't work
+            with it.</li>
+        </ul>
+
+        <h3>The part that surprises people</h3>
+        <p><strong>If you have a Medicare Advantage plan and you join a stand-alone drug plan, you are
+          disenrolled from your Medicare Advantage plan and returned to Original Medicare</strong> —
+          your medical coverage moves too, not just your drugs. It happens automatically. It is not a
+          way to "add" a cheaper drug plan to a Medicare Advantage plan.</p>
+        <p>Going back to Original Medicare is a real choice people make on purpose — but it's worth
+          knowing two things first:</p>
+        <ul>
+          <li><strong>Medigap may not be automatic.</strong> You get a one-time 6-month Medigap open
+            enrollment that starts when you're 65 or older and enrolled in Part B. During that window —
+            or when you have a "guaranteed issue right" — an insurer can't use your health history to
+            refuse you or charge you more. <strong>Outside those windows, an insurer can consider your
+            health history, and can turn you down or charge more.</strong></li>
+          <li><strong>A few plan types work differently.</strong> For example, some Private Fee-for-Service
+            (PFFS) plans that don't include drug coverage, and Medical Savings Account (MSA) plans, expect
+            you to add a separate drug plan. A SHIP counselor can confirm which kind you have.</li>
+        </ul>
+        <p>We don't answer whether switching is right for you — that depends on your doctors, your
+          medical costs, and your health history, none of which we see. That's a conversation for a
+          <a href="https://www.shiphelp.org" rel="noopener" target="_blank">free SHIP counselor</a> or
+          1-800-MEDICARE.</p>
+        <p class="muted small">Mechanics verified against Medicare.gov, July 2026:
+          <a href="https://www.medicare.gov/health-drug-plans/part-d/basics/choose-coverage/switch-drop-rejoin" rel="noopener" target="_blank">Switch, drop, or rejoin drug coverage</a> ·
+          <a href="https://www.medicare.gov/health-drug-plans/medigap/ready-to-buy" rel="noopener" target="_blank">Get ready to buy a Medigap policy</a>.</p>
+      </div>
     </section>
 
     <section class="card" id="costs">
@@ -160,7 +202,7 @@
   <!-- The out-of-pocket cap in the Catastrophic entry is rendered from /api/meta — the SAME statutory
        parameter the cost engine computes with — so the glossary and the math can't disagree. No cap
        amount or year is hardcoded in this page; without JS the sentence simply omits the parenthetical. -->
-  <script src="/format.js?v=30"></script>
+  <script src="/format.js?v=32"></script>
   <script>
     fetch('/api/meta').then(function (r) { return r.json(); }).then(function (m) {
       var t = window.PRFormat && PRFormat.capPhrase(m);

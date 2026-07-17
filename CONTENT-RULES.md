@@ -106,6 +106,13 @@ close the tab?*
     prescribed something new"). Anchor always-true prices in time
     ("$0 all year"). *(Incidents: trade-off framing; the ambiguous
     mail-order $0 sentence, Jul 2026.)*
+28. **NEVER ship a price without its basis.** Per what supply, at what
+    pharmacy type — that is part of the number, not the footnote:
+    "$10.00 per 30-day fill · $120.00/yr". Coinsurance estimates get the
+    same treatment. State whatever basis the math actually used, from the
+    same constant the math uses. *(Appended Jul 2026. Incident: the
+    kitchen-table test — a real reader read "$10.00/fill · $120.00/yr"
+    and asked whether that was 30 days or 90.)*
 
 ### Plain English
 
@@ -154,6 +161,14 @@ close the tab?*
     finishing informed and leaving — the September return, the printed
     page, the bookmark — never for time-on-site, streaks, or
     click-bait structures. Mission metrics outrank vanity metrics.
+29. **NEVER write a label in our schema — write it in the reader's
+    question.** Link and button labels name what she wants to know
+    ("How this price changes — during the year and by pharmacy"), not our
+    data model ("Other phases & pharmacy channels"). Jargon may be taught
+    *inside*, never spent on the label that earns the tap. *(Appended Jul
+    2026. Incident: founder review.)* **[VERIFY when the handbook corpus
+    lands: does plan paperwork say "phase" or "coverage stage"? Teach the
+    term her mail uses.]**
 
 ### Safety-adjacent content
 

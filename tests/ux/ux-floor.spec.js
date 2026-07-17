@@ -32,6 +32,23 @@ const STATES = [
   { name: 'results-partial', results: 'results-partial.json', async setup(page) { await page.goto('/'); await H.runToResults(page); } },
   { name: 'results-zero', results: 'results-zero.json', async setup(page) { await page.goto('/'); await H.runToResults(page); } },
   { name: 'results-cap', results: 'results-cap.json', async setup(page) { await page.goto('/'); await H.runToResults(page); } },
+  // ---- the two roads. `results-two-roads.json` spans BOTH roads, so the framing/divider render. ----
+  // "Not sure" opens the wallet check — a dense list inside an optional card.
+  { name: 'entry-road-unsure', async setup(page) { await page.goto('/'); await page.click('.road-choice[data-road="unsure"]'); await page.waitForSelector('.wallet-check', { state: 'visible' }); } },
+  // No road given: mixed list + the both-kinds line + the premium-comparability note.
+  { name: 'results-roads-mixed', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await H.runToResults(page); await page.waitForSelector('.road-mixed'); } },
+  // MA road: her plans first, then the divider carrying the disenrollment warning (the safety case).
+  { name: 'results-road-ma', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.click('.road-choice[data-road="ma"]'); await H.runToResults(page); await page.waitForSelector('.road-divider'); } },
+  // Original-Medicare road: the "choose by price alone" note + the other road below the divider.
+  { name: 'results-road-original', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.click('.road-choice[data-road="original"]'); await H.runToResults(page); await page.waitForSelector('.road-divider'); } },
+  // A typed plan ID anchors her plan first as a distinct card, breakdown open by default.
+  { name: 'results-your-plan', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'H2041-001'); await H.runToResults(page); await page.waitForSelector('.plan-yours'); } },
+  // Her plan covering NOTHING, still first — placement exempt, honesty not.
+  { name: 'results-your-plan-zero', results: 'results-zero.json', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'H2041-001'); await H.runToResults(page); await page.waitForSelector('.plan-yours'); } },
+  // A real-looking ID that isn't in this county — the designed not-found state, results beneath.
+  { name: 'results-planid-missed', results: 'results-two-roads.json', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'H7777-777'); await H.runToResults(page); await page.waitForSelector('.planid-missed'); } },
+  // Malformed input — the friendly incremental hint.
+  { name: 'entry-planid-malformed', async setup(page) { await page.goto('/'); await page.fill('#road-plan-id', 'HH99'); await page.waitForSelector('.planid-hint:not([hidden])'); } },
   { name: 'faq', async setup(page) { await page.goto('/faq.html'); } },
   { name: 'story', async setup(page) { await page.goto('/story.html'); } },
 ];

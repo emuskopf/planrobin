@@ -37,9 +37,12 @@
       else {
         const fl = [res.flags.priorAuth && 'PA', res.flags.stepTherapy && 'ST', res.flags.quantityLimit && 'QL'].filter(Boolean).join(' ');
         tier = 'Tier ' + res.tier + (fl ? ' ' + fl : '');
-        if (res.headline.kind === 'copay') cost = money(res.headline.dollars) + '/fill';
-        else if (res.estimated) cost = res.headline.display + ' ≈ ' + PRFormat.dollars(res.estimated.annual) + '/yr';
-        else cost = res.headline.display;
+        // A price never ships without its basis — same shared constant the screen uses, so the
+        // printed sheet, the PDF, and the results page state the same "per what supply".
+        const B = PRFormat.HEADLINE_BASIS;
+        if (res.headline.kind === 'copay') cost = money(res.headline.dollars) + ' ' + B.perLabel;
+        else if (res.estimated) cost = res.headline.display + ' ' + B.ofEachLabel + ' ≈ ' + PRFormat.dollars(res.estimated.annual) + '/yr';
+        else cost = res.headline.display + ' ' + B.ofEachLabel;
         const rule = (res.appliedOverrides || [])[0];
         if (rule && LAW_BADGE[rule.rule]) cost += ' — ' + LAW_BADGE[rule.rule];
       }
@@ -96,6 +99,11 @@
       'Educational tool — not advice, and not an enrollment. PlanRobin does not sell insurance or enroll you in coverage.',
       'A private website — not affiliated with the federal Medicare program or any insurance company.',
     ];
+    // Both roads on one printed sheet: the on-screen divider isn't on paper, so the sheet has to carry
+    // the consequence itself. Conditional — a one-road sheet says nothing it doesn't need to.
+    if (PRFormat.roadsMix(top)) {
+      caveats.push('The plans above are two different kinds, and they are not interchangeable. A drug-only plan (PDP) works alongside Original Medicare; an all-in-one Medicare Advantage plan replaces it. Joining a drug-only plan while you have a Medicare Advantage plan would end that plan and return you to Original Medicare — medical coverage included. A few rare plan types work differently. Ask a SHIP counselor before you switch.');
+    }
     // Only when an MA-PD is actually printed: the premium shown is the Part D drug-coverage portion,
     // not the plan's full premium. Conditional so a PDP-only sheet carries no note it doesn't need.
     if (top.some((p) => PRFormat.isMaPd(p.planType))) {

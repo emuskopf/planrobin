@@ -158,15 +158,112 @@
     return dollars(meta.oopCapAnnual) + ' in ' + meta.planYear;
   }
 
+  // ---- The two roads ----------------------------------------------------------------------------
   // A Medicare Advantage (MA-PD / regional MA-PD) plan? Works on the raw type ("MA","MA-regional")
   // or the display label ("MA-PD","MA-PD (regional)") — all start with "MA"; a PDP never does.
   function isMaPd(planType) { return /^MA/i.test(String(planType || '')); }
+  // Which road a plan lives on. 'ma' = an all-in-one Medicare Advantage plan (replaces Original
+  // Medicare). 'original' = a stand-alone drug plan that sits ON TOP of Original Medicare. These are
+  // not interchangeable: enrolling in a PDP while on an MA plan disenrolls you from the MA plan and
+  // returns you to Original Medicare (Medicare.gov, "Switch, drop, or rejoin drug coverage").
+  function roadOf(planType) { return isMaPd(planType) ? 'ma' : 'original'; }
+  // Only a KNOWN current road can group results; "new to Medicare" and "not sure" have no road yet.
+  const KNOWN_ROADS = ['ma', 'original'];
+  function isKnownRoad(road) { return KNOWN_ROADS.indexOf(road) !== -1; }
+
+  // A CMS plan ID as printed on a membership card: a letter, four digits, a dash, three digits
+  // ("H1234-001"). Spaces and case are ignored — she's reading it off a card, not typing a key.
+  const PLAN_ID_RE = /^[A-Z]\d{4}-\d{3}$/;
+  const PLAN_ID_PREFIX_RE = /^[A-Z]?\d{0,4}-?\d{0,3}$/; // still could BECOME valid → don't nag yet
+  function normalizePlanId(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase(); }
+  function isPlanIdShape(v) { return PLAN_ID_RE.test(normalizePlanId(v)); }
+  function isPlanIdPrefix(v) { return PLAN_ID_PREFIX_RE.test(normalizePlanId(v)); }
+
+  // ---- THE grouping definition (one source of truth) ---------------------------------------------
+  // Everything that needs to know "which plans go where" reads THIS: the rendered list, the headline
+  // count, and (next) the checkup. Three buckets, and it NEVER filters — every input plan lands in
+  // exactly one bucket, order preserved, so the complete-vs-partial ranking underneath is untouched.
+  //
+  //   yourPlan        the plan whose ID she typed, EXTRACTED from its group (renders first, always)
+  //   sameRoadOthers  the rest of the plans on her road
+  //   otherRoad       the plans on the other road (never hidden — just below a divider)
+  //
+  // Her road comes from the plan we matched (authoritative) or, failing that, from what she told us.
+  // A well-formed ID we could NOT match does not imply a road: if we can't find the plan, we don't
+  // assume things about it — the UI asks her to pick a road instead.
+  function groupPlans(plans, opts) {
+    opts = opts || {};
+    const all = (plans || []).slice();
+    const wanted = opts.planId ? normalizePlanId(opts.planId) : '';
+    let yourPlan = null, rest = all;
+    if (wanted) {
+      const i = all.findIndex((p) => normalizePlanId(p && p.planId) === wanted);
+      if (i !== -1) { yourPlan = all[i]; rest = all.slice(0, i).concat(all.slice(i + 1)); }
+    }
+    const road = yourPlan ? roadOf(yourPlan.planType) : opts.road;
+    // planIdMissed: she gave us a real-looking ID and it isn't in this county's results — a designed
+    // state, not an error (see the not-found note).
+    const planIdMissed = !!wanted && !yourPlan;
+    if (!isKnownRoad(road)) {
+      return { yourPlan, sameRoadOthers: rest, otherRoad: [], grouped: false, road: null, planIdMissed };
+    }
+    return {
+      yourPlan,
+      sameRoadOthers: rest.filter((p) => roadOf(p.planType) === road),
+      otherRoad: rest.filter((p) => roadOf(p.planType) !== road),
+      grouped: true,
+      road,
+      planIdMissed,
+    };
+  }
+
+  // What we call each road's plans, in her words.
+  const ROAD_NOUN = { ma: 'Medicare Advantage', original: 'drug-only' };
+  const otherRoadOf = (road) => (road === 'ma' ? 'original' : 'ma');
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  // The headline count, spoken in the SAME grouping the page renders — so the number can never
+  // contradict the layout. Her own plan is counted inside her road's total (it IS one of them).
+  function resultsCountLine(group, countyName) {
+    const g = group || {};
+    const total = (g.yourPlan ? 1 : 0) + (g.sameRoadOthers || []).length + (g.otherRoad || []).length;
+    if (!g.grouped) return plural(total, 'plan', 'plans');
+    const sameN = (g.yourPlan ? 1 : 0) + (g.sameRoadOthers || []).length;
+    const otherN = (g.otherRoad || []).length;
+    const where = countyName ? ` in ${countyName}` : '';
+    const same = plural(sameN, `${ROAD_NOUN[g.road]} plan`, `${ROAD_NOUN[g.road]} plans`) + where;
+    if (!otherN) return same;
+    const other = plural(otherN, `${ROAD_NOUN[otherRoadOf(g.road)]} plan`, `${ROAD_NOUN[otherRoadOf(g.road)]} plans`);
+    return `${same} — plus ${other} on a different road, below`;
+  }
+  // Do both roads appear in this result set? (Premium comparability + the "both kinds" line hang on this.)
+  function roadsMix(plans) {
+    const all = plans || [];
+    return all.some((p) => roadOf(p.planType) === 'ma') && all.some((p) => roadOf(p.planType) === 'original');
+  }
+
+  // ---- Price basis (a price never ships without its basis) ---------------------------------------
+  // The headline per-drug number's basis IS the basis the engine projects with: days-supply code '1'
+  // = a 30-day fill, 12 fills a year, standard retail, initial coverage. The label and the
+  // arithmetic live together here so the words and the math cannot disagree (a node test asserts this
+  // matches the engine's FILLS_PER_YEAR). Change the engine's basis → change it here, once.
+  const HEADLINE_BASIS = {
+    daysSupplyCode: '1',
+    days: 30,
+    fillsPerYear: 12,
+    perLabel: 'per 30-day fill',      // "$10.00 per 30-day fill"
+    ofEachLabel: 'of each 30-day fill', // "25% of each 30-day fill"
+  };
+  // Annualize a headline per-fill copay on that same basis.
+  function headlineAnnual(dollars) { return (Number(dollars) || 0) * HEADLINE_BASIS.fillsPerYear; }
   // The premium figure we show is the CMS Plan Information PREMIUM field. For a PDP that IS the whole
   // premium; for an MA-PD it's only the Part D drug-coverage portion (the medical/Part C premium is
   // separate and not in this file), so we label it honestly. See planrobin-premium-semantics.
   function premiumLabel(planType) { return isMaPd(planType) ? 'drug coverage premium' : 'premium'; }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel };
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel,
+    roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
+    normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);
