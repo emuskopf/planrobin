@@ -121,7 +121,10 @@
   // the sentences are what must match. `noun` only names the thing she's reopening.
   function reopenItems(noun, shareUrl) {
     return [
-      { type: 'h3', text: `Reopen this ${noun}` },
+      // `reopen-h` is STRUCTURAL, not just a heading: it opens the two-column block the QR sits beside.
+      // It is deliberately NOT `h3` — a plain sub-heading (the action plan uses several) must never
+      // open a share column, or everything after it ends up nested inside one.
+      { type: 'reopen-h', text: `Reopen this ${noun}` },
       { type: 'note', text: 'To see this search again — with the newest plan data — pick whichever is easiest for you:' },
       { type: 'path', icon: '📷', text: 'Use your phone’s camera. Open the camera as if you’re taking a picture, and point it at the square code below. You don’t need any special app. A link will pop up on the screen — tap it, and this exact search opens.' },
       { type: 'path', icon: '📝', text: 'Or simply re-add your medications from the list on page 1. The search box helps as you type — it takes about a minute.' },

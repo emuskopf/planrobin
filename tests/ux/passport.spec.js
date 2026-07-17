@@ -138,6 +138,49 @@ test('checkup: print DOM == PDF == model, and the sheet says what the report sai
   expect(r.heading).toBe('Your plan');
 });
 
+// REGRESSION (2026-07-17, found on the live preview — no fixture had this shape). A sheet with BOTH a
+// covered drug and a gap renders an action sub-heading ("Keep filling these where you do"), which used
+// to reuse the `h3` type that OPENS the reopen block's two-column layout. Everything after it — the
+// fair-price disclosure, the perks script, the small print — got nested inside that block: scrambled
+// order, broken layout. Neither hermetic fixture produced a page-1 sub-heading, so both passed.
+// Real Missouri data does this constantly (one generic covered, one brand off-formulary).
+test('checkup: a sheet with a keep heading AND a gap keeps model order (partial coverage)', async ({ page }) => {
+  await H.interceptApis(page, { results: 'results-partial-gap.json' });
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await page.goto('/checkup.html');
+  await H.setCounty(page);
+  await H.addDrug(page, '20 MG');
+  await H.addDrug(page, '60 MG');
+  await page.fill('#road-plan-id', 'H2041-001');
+  await page.click('.road-choice[data-perks="no"]');
+  await page.click('#go');
+  await page.waitForSelector('.action-plan');
+
+  const r = await page.evaluate(async (SEL) => {
+    await loadPdfLib();
+    const norm = (s) => s.replace(/\s+/g, ' ').trim();
+    const model = passportModelNow(state.lastData);
+    const ms = PRPassport.passportStrings(model).map(norm);
+    const dom = [...buildPassport(state.lastData).querySelectorAll(SEL)].map((e) => norm(e.textContent)).filter(Boolean);
+    const pdf = await renderPassportPdf(model);
+    const eq = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+    const firstDiff = dom.findIndex((x, i) => x !== ms[i]);
+    return {
+      domEqualsModel: eq(dom, ms), pdfEqualsModel: eq(pdf.drawn.map(norm), ms),
+      diff: firstDiff < 0 ? null : { at: firstDiff, dom: dom[firstDiff], model: ms[firstDiff] },
+      types: model.items.map((i) => i.type),
+      // the page-1 sub-heading must NOT have opened a share block
+      shareBlocks: buildPassport(state.lastData).querySelectorAll('.pp-share').length,
+    };
+  }, SEL);
+
+  expect(r.types, 'this fixture must actually produce a page-1 sub-heading, or it proves nothing').toContain('h3');
+  expect(r.types).toContain('reopen-h');
+  expect(r.shareBlocks, 'exactly ONE share block — the reopen page. A sub-heading must not open one.').toBe(1);
+  expect(r.domEqualsModel, 'print DOM must equal the model; diff: ' + JSON.stringify(r.diff)).toBe(true);
+  expect(r.pdfEqualsModel, 'PDF must equal the model').toBe(true);
+});
+
 test('checkup: picking from the list softens the word — screen and sheet together', async ({ page }) => {
   await H.interceptApis(page, { results: 'results-two-roads.json' });
   await page.setViewportSize({ width: 412, height: 900 });

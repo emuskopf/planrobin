@@ -1064,7 +1064,10 @@ function renderPassportDom(model) {
     else if (it.type === 'script') page.append(el('blockquote', { className: 'pp-script', textContent: it.text }));
     else if (it.type === 'fine') page.append(el('p', { className: 'pp-fine', textContent: it.text }));
     else if (it.type === 'caveat') listIn(page, 'pp-caveats').append(el('li', { textContent: it.text }));
-    else if (it.type === 'h3') { const sh = el('div', { className: 'pp-share' }); sh.append(el('h3', { className: 'pp-h3', textContent: it.text })); const cols = el('div', { className: 'pp-share-cols' }); const left = el('div', {}); cols.append(left); sh.append(cols); page.append(sh); page._share = { cols, left }; }
+    // A plain sub-heading (the action plan's "Keep filling these…", "Send these 2 to mail order…").
+    else if (it.type === 'h3') page.append(el('h3', { className: 'pp-h3', textContent: it.text }));
+    // The reopen block: a heading that OPENS the two-column layout the QR sits in.
+    else if (it.type === 'reopen-h') { const sh = el('div', { className: 'pp-share' }); sh.append(el('h3', { className: 'pp-h3', textContent: it.text })); const cols = el('div', { className: 'pp-share-cols' }); const left = el('div', {}); cols.append(left); sh.append(cols); page.append(sh); page._share = { cols, left }; }
     // Notes are the checkup's workhorse paragraph and appear on BOTH pages: inside the reopen block
     // (the comparison's only use) and in the report body above it. So they land in the share column
     // when one is open, and in the page otherwise — never assuming an h3 came first.
@@ -1195,7 +1198,7 @@ async function renderPassportPdf(model) {
     else if (it.type === 'script') text(it.text, { size: 10, indent: 16, color: c.gray });
     else if (it.type === 'fine') text(it.text, { size: 9, color: c.gray });
     else if (it.type === 'caveat') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
-    else if (it.type === 'h3') { y -= 4; text(it.text, { serif: true, size: 12 }); }
+    else if (it.type === 'h3' || it.type === 'reopen-h') { y -= 4; text(it.text, { serif: true, size: 12 }); }
     else if (it.type === 'note') text(it.text, { size: 9.5 });
     else if (it.type === 'path') { y -= 1; text(it.text, { size: 10, indent: 16, prefix: '•  ' }); } // icon is decorative → a plain marker in the PDF
     else if (it.type === 'url') linkText(it.text, it.link || it.text);

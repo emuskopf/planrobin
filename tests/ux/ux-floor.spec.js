@@ -75,6 +75,18 @@ STATES.push(
   { name: 'checkup-report', results: 'results-two-roads.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', where: 'local', days: '1', perks: 'unsure' }); await page.waitForSelector('.action-plan'); } },
   // Her plan covers nothing she takes → the fair-price check must fire, not-covered leading.
   { name: 'checkup-report-notcovered', results: 'results-zero.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', perks: 'no' }); await page.waitForSelector('.plan-yours'); } },
+  // The shape real Missouri data takes: one drug covered, one off-formulary everywhere. Both a keep
+  // heading AND a gap on one report — the combination neither other fixture produces.
+  { name: 'checkup-report-partial-gap', results: 'results-partial-gap.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await H.addDrug(page, '60 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('.road-choice[data-perks="no"]');
+    await page.click('#go');
+    await page.waitForSelector('.action-warn');
+  } },
 );
 
 for (const st of STATES) {
@@ -122,6 +134,18 @@ const SHEETS = [
     await page.fill('#road-plan-id', 'H2041-001');
     await page.click('#go');
     await page.waitForSelector('.plan-yours');
+  } },
+  // a keep heading AND a gap — the real-data shape whose sub-heading used to open the reopen block's
+  // column layout and scramble everything after it.
+  { name: 'checkup-passport-print-partial-gap', results: 'results-partial-gap.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await H.addDrug(page, '60 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('.road-choice[data-perks="no"]');
+    await page.click('#go');
+    await page.waitForSelector('.action-warn');
   } },
 ];
 
