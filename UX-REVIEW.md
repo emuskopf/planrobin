@@ -171,6 +171,13 @@ hand too because a mechanism can reappear in a new component:
    return IS the business model; she should not have to relearn the product each year. Share links
    rerun against *current* data, not a frozen snapshot; the printed page invites her to "bring this out
    in October." *(Incidents: share-link restore-and-rerun; the passport reopen paths. 2026-07-08.)*
+13. **FALSE REASSURANCE — a verdict that reads as warmth when the engine had nothing to check, or
+   checked nothing that mattered.** "Good news" must be EARNED by an assertion the reader could
+   verify (`allClear` computed from real coverage, not from an empty action list). Empty, silent, and
+   not-applicable states must never wear the same clothes as verified-fine states. *(Incident: the
+   checkup's do-nothing verdict rendering on a plan that covered nothing the user takes — actionPlan
+   skipped not-covered drugs, fairPriceCheck's early-return preempted its own always-fires rule;
+   caught by a vacuous-green fixture dump, 2026-07.)*
 
 ---
 
