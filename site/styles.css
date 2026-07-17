@@ -266,6 +266,50 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 .plan-type-link { color: var(--ink); text-decoration-style: dotted; text-underline-offset: 3px; }
 .plan-type-link:hover { color: var(--accent); }
 
+/* ---------- the 5-Minute Checkup ---------- */
+.field-label { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); margin: var(--sp-4) 0 var(--sp-2); }
+/* the premium, given the prominence a real reader asked for out loud */
+.premium-prominent { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap;
+  margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.pp-amt { font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-lg); color: var(--ink); }
+.pp-lbl { font-size: var(--fs-sm); color: var(--ink-2); }
+/* the plan picker — the list we already priced, not a new question */
+.picker-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.picker-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.picker-sub { font-weight: 400; }
+/* the action plan */
+.action-item { padding: var(--sp-4) 0; border-top: 1px solid var(--line); }
+.action-item:first-of-type { border-top: 0; padding-top: 0; }
+.action-head { font-size: var(--fs-md); color: var(--ink); margin: 0 0 var(--sp-2); }
+.action-drugs { margin: 0 0 var(--sp-3); padding-left: var(--sp-4); font-size: var(--fs-sm); }
+.action-drugs li { margin: var(--sp-2) 0; }
+.action-how-head { font-size: var(--fs-sm); font-weight: 600; margin: var(--sp-3) 0 var(--sp-2); }
+.action-script { margin: 0 0 var(--sp-3); padding: var(--sp-3) var(--sp-4); background: var(--surface-2);
+  border-left: 4px solid var(--brand-sage); border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--ink); }
+.action-reassure { font-size: var(--fs-sm); color: var(--ink-2); margin: 0; }
+.action-good { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-base);
+  color: var(--ink); padding: var(--sp-3) var(--sp-4); background: var(--good-tint);
+  border: 1px solid var(--good); border-radius: var(--radius); }
+.action-good .ic { flex: none; color: var(--good); margin-top: 2px; }
+.action-baseline { margin: var(--sp-3) 0 0; }
+/* the fair-price check — disclosure, never alarm: amber, not red; calm, not loud */
+.fair-price { border-left: 4px solid var(--caution); }
+.fp-lead { display: flex; gap: var(--sp-2); align-items: flex-start; font-weight: 600; margin-bottom: var(--sp-3); }
+.fp-lead .ic { flex: none; color: var(--notcov); margin-top: 2px; }
+.fp-lead-text { font-weight: 600; }
+.perks-script { margin: 0; padding-left: var(--sp-4); }
+.perks-script li { margin: var(--sp-2) 0; }
+.bridge { background: var(--surface-2); }
+.bridge-ask { margin-bottom: 0; }
+/* the homepage's second front door */
+.doors { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); margin: var(--sp-5) 0 0; }
+.door { display: block; padding: var(--sp-4); background: var(--surface); border: 1.5px solid var(--line-2);
+  border-radius: var(--radius-lg); text-decoration: none; color: var(--ink); }
+.door:hover { border-color: var(--accent); background: var(--accent-tint); color: var(--ink); }
+.door-title { display: block; font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-md); color: var(--brand-navy); }
+.door-sub { display: block; font-size: var(--fs-sm); color: var(--ink-2); margin-top: 4px; }
+@media (min-width: 720px) { .doors { grid-template-columns: 1fr 1fr; } }
+
 /* privacy reassurance sits AT the medication input */
 .privacy-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: var(--sp-3) 0 var(--sp-4);
   padding: var(--sp-3) var(--sp-4); background: var(--accent-tint); border-radius: var(--radius); font-size: var(--fs-sm); color: var(--ink); }

@@ -53,6 +53,30 @@ const STATES = [
   { name: 'story', async setup(page) { await page.goto('/story.html'); } },
 ];
 
+// ---- the 5-Minute Checkup (the second front door). It reuses the comparison page's intake, so the
+// same crush/overflow surfaces apply — and the report adds four of its own.
+async function checkupIntake(page, o) {
+  await page.goto('/checkup.html');
+  await H.setCounty(page);
+  await H.addDrug(page, '20 MG');            // a drug the fixture actually prices
+  if (o.planId) await page.fill('#road-plan-id', o.planId);
+  if (o.road) await page.click(`.road-choice[data-road="${o.road}"]`);
+  if (o.where) await page.click(`.road-choice[data-fill-where="${o.where}"]`);
+  if (o.days) await page.click(`.road-choice[data-fill-days="${o.days}"]`);
+  if (o.perks) await page.click(`.road-choice[data-perks="${o.perks}"]`);
+  await page.click('#go');
+}
+STATES.push(
+  // All five questions on screen at once — the whole intake before a single answer.
+  { name: 'checkup-intake', async setup(page) { await page.goto('/checkup.html'); } },
+  // Skip path: no plan ID → the picker, built from the plans we already priced.
+  { name: 'checkup-picker', results: 'results-two-roads.json', async setup(page) { await checkupIntake(page, { road: 'ma' }); await page.waitForSelector('.picker'); } },
+  // The full report: headline + action plan + fair-price + perks + bridge.
+  { name: 'checkup-report', results: 'results-two-roads.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', where: 'local', days: '1', perks: 'unsure' }); await page.waitForSelector('.action-plan'); } },
+  // Her plan covers nothing she takes → the fair-price check must fire, not-covered leading.
+  { name: 'checkup-report-notcovered', results: 'results-zero.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', perks: 'no' }); await page.waitForSelector('.plan-yours'); } },
+);
+
 for (const st of STATES) {
   test.describe(st.name, () => {
     for (const vw of VIEWPORTS) {

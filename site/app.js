@@ -68,6 +68,12 @@ async function getJSON(url, opts) {
   return r.json();
 }
 
+// Which front door is this? 'compare' (index.html) or 'checkup' (checkup.html). The intake — ZIP,
+// county fallback, medications, the road question, wallet check, plan-ID field — is IDENTICAL on both
+// and is wired ONCE, here. Only what the button DOES differs, so the checkup binds its own runner
+// (checkup.js) and this file leaves #go alone there. One intake, two doors — never a clone.
+const PAGE = (document.body && document.body.dataset && document.body.dataset.page) || 'compare';
+
 // ---------- init ----------
 async function init() {
   try {
@@ -93,7 +99,7 @@ async function init() {
   wireZip();
   wireAutocomplete();
   wireRoad();
-  $('#go').addEventListener('click', runResults);
+  if (PAGE === 'compare') $('#go').addEventListener('click', runResults);   // checkup.js binds its own
 
   // Ctrl/⌘-P and the "Print this comparison" button both build the Plan Passport just before print.
   window.addEventListener('beforeprint', () => {
@@ -674,6 +680,15 @@ function renderPlan(p, opts) {
     const badge = el('div', { className: 'yours-badge' });
     badge.append(ic('save'), el('span', { textContent: 'Your plan' }));
     card.insertBefore(badge, head);
+  }
+  // The checkup gives the premium its own line: the first thing a real reader asked out loud was
+  // "how much are these per month?" — it shouldn't be buried in a meta sub-line. Same label rule as
+  // everywhere else (an MA-PD figure is the drug-coverage portion, not the whole premium).
+  if (opts.premiumProminent) {
+    card.append(el('div', { className: 'premium-prominent' }, [
+      el('span', { className: 'pp-amt', textContent: `${money(p.premium || 0)}/mo` }),
+      el('span', { className: 'pp-lbl term', title: TERMS.premium, textContent: PRFormat.premiumLabel(p.planType) }),
+    ]));
   }
   // Loud partial-coverage flag — names the missing drug(s). Only for plans covering SOME of your
   // drugs; a zero-coverage plan already says so in its anchor (and every drug row below is "not covered").
