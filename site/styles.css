@@ -411,10 +411,19 @@ button.primary:disabled { background: #b7c0c4; color: #eef1f2; cursor: not-allow
 .no-complete-note .ic { color: var(--notcov); flex: none; margin-top: 2px; }
 .plan.plan-partial { border-left: 4px solid var(--notcov); }
 .annual .num.partial { color: var(--ink-2); }
-/* zero-coverage: no dollar anchor — the not-covered badge treatment (icon + words, sentence case) */
-.no-cover-anchor { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end;
-  color: var(--notcov); font-weight: 700; font-size: var(--fs-sm); max-width: 22ch; text-align: right; }
-.no-cover-anchor .ic { flex: none; }
+/* zero-coverage: no dollar anchor — the not-covered badge treatment (icon + words, sentence case).
+   The badge REPLACES the yearly number, so it inherits the anchor's job of being the first thing the
+   eye lands on. It was --fs-sm (16px) while the checkup's premium sat at --fs-lg (28px), so on a plan
+   covering nothing the money out-shouted the fact — a #13 hierarchy inversion. Icon + word + colour
+   (never colour alone), sentence case, no caps. */
+.no-cover-anchor { display: inline-flex; align-items: flex-start; gap: 6px; justify-content: flex-end;
+  color: var(--notcov); font-weight: 700; font-size: var(--fs-md); line-height: var(--lh-tight);
+  max-width: 22ch; text-align: right; }
+.no-cover-anchor .ic { flex: none; margin-top: 3px; }
+/* …and on that card the premium demotes: still true, still shown, no longer the loudest thing on a
+   plan that can't fill her prescriptions. */
+.plan-nocover .premium-prominent .pp-amt { font-family: var(--font); font-size: var(--fs-base);
+  font-weight: 700; color: var(--ink-2); }
 .partial-flag { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3) var(--sp-5);
   border-top: 1px solid var(--line); background: #fbecec; font-size: var(--fs-sm); color: var(--ink); }
 .partial-flag .ic { color: var(--notcov); flex: none; margin-top: 2px; }
@@ -445,9 +454,13 @@ details.breakdown > summary { font-size: var(--fs-sm); }
 .bd-coins .bd-note { text-align: left; }
 .bd-coins-top { display: flex; justify-content: space-between; gap: var(--sp-4); align-items: baseline; }
 .bd-notcov { flex-direction: column; align-items: stretch; gap: 2px; }
-.bd-notcov .bd-label { display: inline-flex; align-items: center; gap: 6px; color: var(--notcov); font-weight: 700; }
+.bd-notcov .bd-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 .bd-notcov .bd-note { text-align: left; }
 .bd-notcov .ic { color: var(--notcov); }
+/* The drug's row carries the SAME semantic badge as the card anchor and the drug rows — icon + words
+   + the not-covered token — rather than grey prose. No "$" is rendered anywhere on this line: there
+   is no price to state, and a dollar figure here would be the fake-$0 wearing breakdown clothes. */
+.bd-notcov-badge { align-self: flex-start; margin-top: 2px; font-size: var(--fs-sm); }
 .bd-cap .bd-note { text-align: left; color: var(--accent); }
 .bd-ded .bd-note { text-align: left; }
 .bd-total { border-top: 2px solid var(--line-2); margin-top: var(--sp-1); padding-top: var(--sp-3); }

@@ -545,4 +545,60 @@ t('HEADLINE_BASIS mirrors the engine projection basis (prose and math cannot dis
   assert.strictEqual(F.headlineAnnual(0), 0);
 });
 
+// ---- UX-REVIEW #13: FALSE REASSURANCE — reassurance must be EARNED --------------------------------
+// Second catch of the same pattern (2026-07-17, Evan on preview). The deductible-exemption note said
+// "your medications … are on tiers the deductible skips" — but a drug the plan doesn't cover is on NO
+// tier, so the sentence was vacuously true and read as an all-clear. The API guards the zero case;
+// the client re-checks anyway, because a payload must never be the only thing between a reader and a
+// false all-clear.
+console.log('\nEarned reassurance — the deductible-exemption note (UX-REVIEW #13):');
+
+const exPlan = (drugs, opts) => Object.assign({
+  planId: 'H1-001', planType: 'MA-PD', drugs,
+  breakdown: { deductibleExempt: true, deductibleAmount: 385 },
+}, opts || {});
+const covd = { covered: true, tier: 1, flags: {}, headline: { kind: 'copay', dollars: 0 } };
+const gap = { covered: false };
+
+t('SUPPRESSED when nothing she takes is covered — even if the payload insists it is exempt', () => {
+  // a deliberately LYING payload: deductibleExempt true, zero coverage. The client must not repeat it.
+  const r = F.deductibleExemptNote(exPlan({ a: gap, b: gap }));
+  assert.strictEqual(r, null, 'a drug on NO tier is not "on a tier the deductible skips"');
+});
+
+t('SCOPED when coverage is partial — it speaks only of the drugs it is true of', () => {
+  const r = F.deductibleExemptNote(exPlan({ a: covd, b: gap }));
+  assert.ok(r, 'the note still renders — one drug IS covered and exempt');
+  assert.strictEqual(r.complete, false);
+  assert.ok(/doesn't apply to the medications it covers/.test(r.text), r.text);
+  assert.ok(!/apply to your medications/.test(r.text), 'never claims the whole basket: ' + r.text);
+});
+
+t('UNSCOPED when everything is covered — "your medications" is then simply true', () => {
+  const r = F.deductibleExemptNote(exPlan({ a: covd, b: covd }));
+  assert.ok(/doesn't apply to your medications/.test(r.text), r.text);
+  assert.strictEqual(r.complete, true);
+  assert.ok(/\$385 deductible/.test(r.text), 'and states the amount it is talking about');
+});
+
+t('silent when the plan has no exemption at all (no note invented)', () => {
+  assert.strictEqual(F.deductibleExemptNote({ drugs: { a: covd }, breakdown: {} }), null);
+  assert.strictEqual(F.deductibleExemptNote({ drugs: { a: covd } }), null);
+  assert.strictEqual(F.deductibleExemptNote({}), null);
+});
+
+t('the zero-coverage FIXTURE matches what the live API actually emits (it used to lie)', () => {
+  // results-zero.json claimed deductibleExempt=true on 5 of 8 zero-coverage plans; the live API
+  // returns false on all 82 real ones. A fixture that encodes a state the API cannot produce is a
+  // hermetic test asserting a fiction — the floors were "green" on a screen that couldn't happen.
+  const zero = require('./ux/fixtures/results-zero.json');
+  for (const p of zero.plans) {
+    const covered = Object.values(p.drugs || {}).filter((d) => d && d.covered).length;
+    if (covered === 0) {
+      assert.strictEqual((p.breakdown || {}).deductibleExempt, false,
+        `${p.planId}: zero coverage cannot be deductible-exempt (the API guards this)`);
+    }
+  }
+});
+
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

@@ -681,7 +681,10 @@ function renderPlan(p, opts) {
     ]),
     annual,
   ]);
-  const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') + (opts.yours ? ' plan-yours' : '') }, [head]);
+  // `plan-nocover` is set from the ONE shared coverage definition (not a local re-derivation), and it
+  // is what lets the stylesheet put the badge above the money in the visual hierarchy: on a plan that
+  // covers nothing she takes, "$0.00/mo" must not out-shout "Doesn't cover any of your medications".
+  const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') + (cov.covered === 0 ? ' plan-nocover' : '') + (opts.yours ? ' plan-yours' : '') }, [head]);
   // "Your plan" — semantic (icon + word + color), sentence case, never a shout. The word mirrors how
   // she told us it was hers (typed the ID vs picked it from a list); the treatment never changes.
   if (opts.yours) {
@@ -721,6 +724,9 @@ function renderPlan(p, opts) {
 // would be decision friction on the single most valuable card. Every other card stays one tap away.
 function renderBreakdown(p, opts) {
   const b = p.breakdown || {};
+  // ONE coverage definition (shared with the card anchor, the sort and the passport) decides which
+  // conditional notes have earned the right to speak here.
+  const cov = PRFormat.planCoverage(p);
   const wrap = el('details', { className: 'breakdown', open: !!(opts && opts.yours) });
   wrap.append(el('summary', { textContent: 'See what’s included in this total' }));
   const rows = el('div', { className: 'bd-rows' });
@@ -759,35 +765,48 @@ function renderBreakdown(p, opts) {
     rows.append(r);
   }
 
-  // Not on the formulary — loud, by name, "you'd pay full price", never a fake $0.
+  // Not on the formulary — the SAME semantic badge the card and the drug rows use (icon + words +
+  // the not-covered token), inline, not plain grey text. No dollar figure renders anywhere on this
+  // line: there is no price to state, and a "$" here is the fake-$0 in breakdown clothing.
   for (const rxcui of (b.notCoveredRxcuis || [])) {
     const meta = state.drugs.get(rxcui) || { label: rxcui };
     const r = el('div', { className: 'bd-line bd-notcov' });
-    const lab = el('span', { className: 'bd-label' }); lab.append(ic('cross'), el('strong', { textContent: ' ' + meta.label }));
-    r.append(lab);
-    r.append(el('span', { className: 'bd-note', textContent: 'Not on this plan’s formulary — you’d pay full price. Not included in the total.' }));
+    r.append(el('span', { className: 'bd-label' }, [el('strong', { textContent: meta.label })]));
+    const badge = el('span', { className: 'status notcov bd-notcov-badge' });
+    badge.append(ic('cross'), document.createTextNode(' Not covered — you’d pay full price'));
+    r.append(badge);
+    r.append(el('span', { className: 'bd-note', textContent: 'Not on this plan’s formulary, so it isn’t included below.' }));
     rows.append(r);
   }
 
-  // Deductible exemption — the plan has a deductible, but the user's drugs are on tiers it skips.
-  if (b.deductibleExempt) {
-    const ded = '$' + Number(b.deductibleAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  // Deductible exemption — reassurance has to be EARNED (UX-REVIEW #13). The shared predicate
+  // suppresses it when nothing she takes is covered, and scopes the sentence when only some is.
+  const dedNote = PRFormat.deductibleExemptNote(p);
+  if (dedNote) {
     rows.append(el('div', { className: 'bd-line bd-ded' }, [
-      el('span', { className: 'bd-note', textContent: `This plan's ${ded} deductible doesn't apply to your medications — they're on tiers the deductible skips.` }),
+      el('span', { className: 'bd-note', textContent: dedNote.text }),
     ]));
   }
 
-  // Cap milestone, where it binds.
-  if (b.capHit && b.capHit.reached && b.capHit.month) {
+  // Cap milestone, where it binds. Guarded on real coverage for the same reason: a cap you'd reach
+  // in March is a statement about spending on drugs this plan actually pays for.
+  if (cov.covered > 0 && b.capHit && b.capHit.reached && b.capHit.month) {
     rows.append(el('div', { className: 'bd-line bd-cap' }, [
       el('span', { className: 'bd-note', textContent: `You’d reach your ${PRFormat.dollars(b.oopCap)} yearly out-of-pocket cap around ${MONTHS[b.capHit.month]}; covered drugs are $0 after that${b.capBinds ? ', so the total below is less than the lines above add up to' : ''}.` }),
     ]));
   }
 
-  rows.append(line('Estimated total', PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr', 'bd-total'));
-  if (b.hasUnpriceable) {
-    rows.append(el('p', { className: 'bd-incomplete', textContent:
-      'One or more of your drugs couldn’t be included (no published price) — your true yearly cost is higher.' }));
+  // A yearly total for a plan that covers NOTHING she takes would be the premium alone — a real
+  // number answering a question nobody asked, sitting where the answer goes. The card's anchor
+  // already says the true thing ("Doesn't cover any of your medications"); the breakdown's last word
+  // is the not-covered rows above. (Premium keeps its own true $0 line: that one is a fact about the
+  // plan, not a verdict about her.)
+  if (cov.covered > 0) {
+    rows.append(line('Estimated total', PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr', 'bd-total'));
+    if (b.hasUnpriceable) {
+      rows.append(el('p', { className: 'bd-incomplete', textContent:
+        'One or more of your drugs couldn’t be included (no published price) — your true yearly cost is higher.' }));
+    }
   }
   wrap.append(rows);
   return wrap;
@@ -799,6 +818,11 @@ function renderBreakdown(p, opts) {
 function renderSavings(p) {
   const s = p.savings;
   if (!s) return null;
+  // Same guard as the deductible note (UX-REVIEW #13). The API suppresses savings on partial and
+  // zero coverage today, so this is belt-and-braces — but "save $240 a year at preferred pharmacies"
+  // on a plan that covers none of her drugs would be the loudest false all-clear on the page, and
+  // that must not depend on the payload staying well-behaved.
+  if (PRFormat.planCoverage(p).covered === 0) return null;
   const LOC = {
     preferredRetail: "this plan's preferred pharmacies",
     standardMail: "this plan's mail-order pharmacy",

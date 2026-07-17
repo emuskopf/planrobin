@@ -49,6 +49,29 @@
     return { total: rxs.length, covered: rxs.length - missing.length, missing, complete: missing.length === 0 };
   }
 
+  // ---- Conditional notes must EARN their reassurance (UX-REVIEW #13: FALSE REASSURANCE) ----------
+  // A note that says something comforting about "your medications" is only true of the medications
+  // this plan actually covers. A drug that's on NO tier is not "on a tier the deductible skips" —
+  // saying so is vacuously true and reads as an all-clear. Two rules, both enforced HERE so screen,
+  // passport and any future consumer can't disagree:
+  //   • suppressed entirely unless at least one basket drug is genuinely covered;
+  //   • when coverage is PARTIAL, the sentence scopes itself to the drugs it's true of.
+  // The API guards the zero case too (`deductibleExempt`), but the client re-checks from the shared
+  // coverage definition: a payload is not allowed to be the only thing standing between a reader and
+  // a false all-clear. Returns null (render nothing) or the pieces the renderer needs.
+  function deductibleExemptNote(plan) {
+    const b = (plan && plan.breakdown) || {};
+    if (!b.deductibleExempt) return null;
+    const cov = planCoverage(plan);
+    if (cov.covered === 0) return null;            // nothing is on any tier — there is no good news here
+    const ded = '$' + Number(b.deductibleAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    const which = cov.complete ? 'your medications' : 'the medications it covers';
+    return {
+      amount: b.deductibleAmount || 0, complete: cov.complete,
+      text: `This plan's ${ded} deductible doesn't apply to ${which} — they're on tiers the deductible skips.`,
+    };
+  }
+
   // Ranking comparator: plans covering ALL basket drugs rank first (a partial plan can NEVER
   // outrank a complete one, regardless of price). Within the partial group, plans covering MORE of
   // your drugs rank higher — so a plan that's only "cheap" because it skips a drug can't float to
@@ -408,7 +431,7 @@
   const YOURS_LABEL = { typed: 'Your plan', picked: 'The plan you selected' };
   function yoursLabel(source) { return YOURS_LABEL[source] || YOURS_LABEL.typed; }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel, yoursLabel,
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel, yoursLabel, deductibleExemptNote,
     roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
     normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual,
     inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED, actionPlan };
