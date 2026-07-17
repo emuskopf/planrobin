@@ -19,20 +19,12 @@ t('2026 params verified: oopCap 2100, insulin 35', () => {
   assert.strictEqual(p.oopCapAnnual, 2100);
   assert.strictEqual(p.insulinMonthlyCap, 35);
 });
-t('AEP window is a verified parameter (Oct 15 – Dec 7), boundaries inclusive', () => {
-  const { ENROLLMENT, inAep } = require('../tools/overrides/statutory-params');
+t('AEP window is a verified parameter (Oct 15 – Dec 7); the comparison lives in PRFormat', () => {
+  const { ENROLLMENT } = require('../tools/overrides/statutory-params');
   assert.deepStrictEqual(
     [ENROLLMENT.aep.startMonth, ENROLLMENT.aep.startDay, ENROLLMENT.aep.endMonth, ENROLLMENT.aep.endDay],
     [10, 15, 12, 7], 'Medicare Open Enrollment is October 15 – December 7 (Medicare.gov)');
-  // boundary days are INSIDE the window
-  assert.strictEqual(inAep(new Date(2026, 9, 15)), true, 'Oct 15 is open');
-  assert.strictEqual(inAep(new Date(2026, 11, 7)), true, 'Dec 7 is open');
-  // the days either side are outside
-  assert.strictEqual(inAep(new Date(2026, 9, 14)), false, 'Oct 14 is closed');
-  assert.strictEqual(inAep(new Date(2026, 11, 8)), false, 'Dec 8 is closed');
-  // and the rest of the year
-  assert.strictEqual(inAep(new Date(2026, 6, 8)), false, 'July is closed');
-  assert.strictEqual(inAep(new Date(2026, 0, 1)), false, 'January is closed');
+  assert.strictEqual(ENROLLMENT.aep.effective, 'January 1');
 });
 
 t('unknown plan year throws (no invented params)', () => {

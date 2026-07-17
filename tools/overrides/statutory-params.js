@@ -51,15 +51,9 @@ const ENROLLMENT = {
   aep: { startMonth: 10, startDay: 15, endMonth: 12, endDay: 7, effective: 'January 1' },
 };
 
-// Is `date` inside the AEP for its own year? Pure and timezone-naive on purpose: we compare local
-// calendar month/day, which is how a person reads a date on a calendar.
-function inAep(date, e) {
-  const p = (e || ENROLLMENT).aep;
-  const m = date.getMonth() + 1, d = date.getDate();
-  const afterStart = m > p.startMonth || (m === p.startMonth && d >= p.startDay);
-  const beforeEnd = m < p.endMonth || (m === p.endMonth && d <= p.endDay);
-  return afterStart && beforeEnd;
-}
+// The comparison ("is today inside that window?") lives in PRFormat.inAep, which takes this window as
+// DATA — the window is the parameter and has one home; the arithmetic has one implementation. Served
+// to the browser on /api/meta, never re-typed into copy.
 
 function paramsForYear(planYear) {
   const y = String(planYear);
@@ -68,4 +62,4 @@ function paramsForYear(planYear) {
   return p;
 }
 
-module.exports = { PLAN_YEAR_PARAMS, VACCINE_RULE, paramsForYear, ENROLLMENT, inAep };
+module.exports = { PLAN_YEAR_PARAMS, VACCINE_RULE, paramsForYear, ENROLLMENT };

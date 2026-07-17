@@ -344,6 +344,110 @@ t('roadsMix: true only when BOTH roads are present', () => {
   assert.strictEqual(F.roadsMix([]), false);
 });
 
+console.log('\nSeason awareness (the window is a parameter; the verdict is computed on her clock):');
+
+const AEP_META = { enrollment: require('../tools/overrides/statutory-params').ENROLLMENT };
+
+t('inAep: boundaries inclusive on BOTH ends; the window comes from the engine parameter', () => {
+  const aep = AEP_META.enrollment.aep;
+  assert.strictEqual(F.inAep(aep, new Date(2026, 9, 15)), true, 'Oct 15 is open');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 11, 7)), true, 'Dec 7 is open');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 9, 14)), false, 'Oct 14 is closed');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 11, 8)), false, 'Dec 8 is closed');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 6, 8)), false, 'July is closed');
+  assert.strictEqual(F.inAep(null, new Date()), null, 'no window → no guess');
+});
+
+t('seasonLine: speaks the right sentence either side of the boundary, and never invents a date', () => {
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 10, 1)), 'switching is open until December 7');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 9, 15)), 'switching is open until December 7');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 11, 7)), 'switching is open until December 7');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 11, 8)), 'plan switching opens October 15');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 6, 8)), 'plan switching opens October 15');
+  assert.strictEqual(F.seasonLine({}, new Date()), null, 'meta without a window → say nothing seasonal');
+});
+
+console.log('\nFair-price check — disclosure, never a grade:');
+
+// planDisplayTotal reads breakdown/annualEstimate; planCoverage reads drugs+notCovered.
+const fpPlan = (id, total, notCovered = 0, type = 'MA-PD') => ({
+  planId: id, planType: type, notCovered,
+  annualEstimate: total, breakdown: { premiumAnnual: total, copayAnnual: 0, coinsuranceEstRxcuis: [], capBinds: false },
+  drugs: notCovered ? { a: { covered: true }, b: { covered: false } } : { a: { covered: true }, b: { covered: true } },
+});
+const fpGroup = (yours, others) => F.groupPlans([yours].concat(others), { planId: yours.planId });
+
+t('fires when a same-road plan covering everything is at least the floor cheaper', () => {
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 800), fpPlan('H3-003', 700)]));
+  assert.strictEqual(r.fires, true);
+  assert.strictEqual(r.reason, 'cheaper');
+  assert.strictEqual(r.n, 2, 'both alternatives clear the floor');
+  assert.strictEqual(r.atLeast, 200, 'all N are at least this much less (the SMALLEST qualifying gap)');
+  assert.strictEqual(r.road, 'ma');
+});
+
+t('BOUNDARY AT THE FLOOR: exactly-floor fires; a dollar under it is silence', () => {
+  const at = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 900)]));   // exactly $100
+  assert.strictEqual(at.fires, true, '$100 under == the floor → fires');
+  assert.strictEqual(at.atLeast, 100);
+  const under = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 901)])); // $99
+  assert.strictEqual(under.fires, false, '$99 under → below the floor');
+  assert.strictEqual(under.reason, 'below-floor');
+  assert.strictEqual(F.FAIR_PRICE_FLOOR_UNTUNED, 100, 'the shipped placeholder');
+});
+
+t('"at least $Y" agrees with the totals on her cards (gaps come from the DISPLAYED totals)', () => {
+  // planDisplayTotal is the sum of ROUNDED components — literally the number printed on the card. The
+  // gap we claim must be the one she could work out herself from the two cards; a raw-cents figure
+  // would silently disagree with the screen.
+  assert.strictEqual(F.planDisplayTotal(fpPlan('H2-002', 812.4)), 812, 'the card says $812');
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 812.4)]));
+  assert.strictEqual(r.atLeast, 188, '$1,000 − $812 = $188 — exactly what the two cards show');
+});
+
+t('her plan missing a drug ALWAYS fires, whatever the money says', () => {
+  // hers is the CHEAPEST — but it doesn't cover everything she takes
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 100, 1), [fpPlan('H2-002', 900)]));
+  assert.strictEqual(r.fires, true, 'a gap is worth knowing at any price');
+  assert.strictEqual(r.reason, 'not-covered');
+  assert.strictEqual(r.n, 1, 'plans that cover all of them');
+  assert.strictEqual(r.atLeast, null, 'no cheaper alternative → no savings claimed');
+  assert.strictEqual(r.yourCoverage.complete, false);
+});
+
+t('SILENCE: no same-road alternative covers everything → nothing to disclose', () => {
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 100, 1)]));
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'no-alternatives');
+});
+
+t('SILENCE: cheapest on her road → no "your plan looks good" grade', () => {
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 500), [fpPlan('H2-002', 900), fpPlan('H3-003', 1200)]));
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'below-floor', 'we disclose gaps; we never rank loyalty');
+});
+
+t('the other road is never compared against (that is not a fair compare)', () => {
+  // a PDP is far cheaper, but she's on the MA road — comparing across roads would be dishonest
+  const yours = fpPlan('H1-001', 1000);
+  const g = F.groupPlans([yours, fpPlan('S9-009', 10, 0, 'PDP')], { planId: 'H1-001' });
+  const r = F.fairPriceCheck(g);
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'no-alternatives', 'the cheap PDP is on the other road — not counted');
+});
+
+t('no anchored plan → the check cannot run', () => {
+  const r = F.fairPriceCheck(F.groupPlans([fpPlan('H1-001', 1000)], { road: 'ma' }));
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'no-plan');
+});
+
+t('the floor is injectable, so re-tuning is a data change (not a code change)', () => {
+  const g = fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 950)]);   // $50 gap
+  assert.strictEqual(F.fairPriceCheck(g).fires, false, '$50 < $100 default');
+  assert.strictEqual(F.fairPriceCheck(g, { floor: 50 }).fires, true, 'same data, tuned floor → fires');
+});
+
 console.log('\nPrice basis — a price never ships without its basis:');
 
 t('HEADLINE_BASIS mirrors the engine projection basis (prose and math cannot disagree)', () => {

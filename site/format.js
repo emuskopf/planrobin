@@ -242,6 +242,72 @@
     return all.some((p) => roadOf(p.planType) === 'ma') && all.some((p) => roadOf(p.planType) === 'original');
   }
 
+  // ---- Season awareness --------------------------------------------------------------------------
+  // The AEP window is a verified statutory parameter (tools/overrides/statutory-params.js) served on
+  // /api/meta. We take it as DATA and do the comparison here, once — the window has one home, the
+  // arithmetic has one implementation, and no date is ever re-typed into copy.
+  // Calendar-naive (month/day) on purpose: that's how a person reads a date.
+  function inAep(aep, now) {
+    if (!aep) return null;                       // no window → we don't know; say nothing seasonal
+    const d = now || new Date();
+    const m = d.getMonth() + 1, day = d.getDate();
+    const afterStart = m > aep.startMonth || (m === aep.startMonth && day >= aep.startDay);
+    const beforeEnd = m < aep.endMonth || (m === aep.endMonth && day <= aep.endDay);
+    return afterStart && beforeEnd;
+  }
+  const MONTH_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthDay = (m, d) => `${MONTH_NAME[m - 1]} ${d}`;
+  // "switching is open until December 7" (inside AEP) / "plan switching opens October 15" (outside).
+  // Null when meta carries no window — we never guess a date.
+  function seasonLine(meta, now) {
+    const aep = meta && meta.enrollment && meta.enrollment.aep;
+    const open = inAep(aep, now);
+    if (open === null) return null;
+    return open
+      ? `switching is open until ${monthDay(aep.endMonth, aep.endDay)}`
+      : `plan switching opens ${monthDay(aep.startMonth, aep.startDay)}`;
+  }
+
+  // ---- The fair-price check ----------------------------------------------------------------------
+  // Deterministic disclosure, never a grade. Compares HER plan's basket against the plans on HER road
+  // that cover EVERY drug on her list (anything else isn't a fair compare). Rules:
+  //   • fires when at least one such plan is >= floor cheaper per year
+  //   • ALWAYS fires when her own plan misses one of her drugs — a gap is worth knowing at any price
+  //   • otherwise SILENCE: we disclose gaps, we don't rank loyalty ("your plan looks good" is a grade)
+  //
+  // FLOOR — $100/yr is an UNTUNED PLACEHOLDER. It has NOT been measured against real Missouri
+  // distributions; that tuning needs the live DB and lands with the counters work. The tests pin the
+  // BOUNDARY BEHAVIOUR, not this number, so re-tuning is a one-line data change.
+  const FAIR_PRICE_FLOOR_UNTUNED = 100;
+
+  function fairPriceCheck(group, opts) {
+    opts = opts || {};
+    const floor = opts.floor == null ? FAIR_PRICE_FLOOR_UNTUNED : opts.floor;
+    const you = group && group.yourPlan;
+    if (!you) return { fires: false, reason: 'no-plan', floor };
+    const yourCoverage = planCoverage(you);
+    const road = group.road;
+    // Same road + covers everything she takes.
+    const alts = (group.sameRoadOthers || []).filter((p) => planCoverage(p).complete);
+    if (!alts.length) return { fires: false, reason: 'no-alternatives', floor, road, yourCoverage };
+
+    const yourTotal = planDisplayTotal(you);
+    // Gaps are computed from the DISPLAYED totals (planDisplayTotal = the sum of rounded components,
+    // i.e. the number printed on each card), so "at least $Y" is always the figure she could work out
+    // herself from the two cards. Math.floor is a belt-and-braces guard: the claim can never exceed
+    // the gap on screen.
+    const deltas = alts.map((p) => yourTotal - planDisplayTotal(p));
+    const cheaper = deltas.filter((d) => d >= floor);
+    const atLeast = cheaper.length ? Math.floor(Math.min.apply(null, cheaper)) : null;
+
+    // Her plan doesn't cover everything she takes → she needs to know, whatever the money says.
+    if (!yourCoverage.complete) {
+      return { fires: true, reason: 'not-covered', n: alts.length, atLeast, floor, road, yourCoverage };
+    }
+    if (!cheaper.length) return { fires: false, reason: 'below-floor', floor, road, yourCoverage };
+    return { fires: true, reason: 'cheaper', n: cheaper.length, atLeast, floor, road, yourCoverage };
+  }
+
   // ---- Price basis (a price never ships without its basis) ---------------------------------------
   // The headline per-drug number's basis IS the basis the engine projects with: days-supply code '1'
   // = a 30-day fill, 12 fills a year, standard retail, initial coverage. The label and the
@@ -263,7 +329,8 @@
 
   const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel,
     roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
-    normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual };
+    normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual,
+    inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);
