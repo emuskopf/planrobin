@@ -221,4 +221,81 @@ t('n/a channel is omitted honestly (no blank line), and deductible-exempt note i
   assert.ok(/skips the plan’s deductible/.test(s.footnote), s.footnote);
 });
 
+console.log('\nThe two roads — grouping orders, it NEVER filters:');
+
+const maPlan = (id, notCovered = 0) => ({ planId: id, planType: 'MA-PD', notCovered });
+const pdpPlan = (id, notCovered = 0) => ({ planId: id, planType: 'PDP', notCovered });
+
+t('roadOf: an MA-PD (any variant) is the MA road; a PDP is the Original-Medicare road', () => {
+  for (const t of ['MA-PD', 'MA-PD (regional)', 'MA', 'MA-regional']) assert.strictEqual(F.roadOf(t), 'ma', t);
+  assert.strictEqual(F.roadOf('PDP'), 'original');
+});
+
+t('roadFromPlanId: H/R = Medicare Advantage road, S = Original-Medicare road, else null', () => {
+  assert.strictEqual(F.roadFromPlanId('H1234-001'), 'ma');
+  assert.strictEqual(F.roadFromPlanId('R5826-002'), 'ma');
+  assert.strictEqual(F.roadFromPlanId('s5601-002'), 'original');  // case-insensitive
+  assert.strictEqual(F.roadFromPlanId(' H1234-001 '), 'ma');      // trimmed
+  for (const bad of ['', null, undefined, '1234', 'X1-1']) assert.strictEqual(F.roadFromPlanId(bad), null, String(bad));
+});
+
+t('partitionByRoad NEVER drops a plan and preserves the incoming order (ranking underneath untouched)', () => {
+  const plans = [maPlan('H1'), pdpPlan('S1'), maPlan('H2'), pdpPlan('S2')];
+  for (const road of ['ma', 'original']) {
+    const p = F.partitionByRoad(plans, road);
+    assert.strictEqual(p.grouped, true);
+    // every plan survives, exactly once
+    assert.strictEqual(p.same.length + p.other.length, plans.length, road);
+    assert.deepStrictEqual([...p.same, ...p.other].map((x) => x.planId).sort(), ['H1', 'H2', 'S1', 'S2'], road);
+    // order within each group is the order it arrived in
+    assert.deepStrictEqual(p.same.map((x) => x.planId), road === 'ma' ? ['H1', 'H2'] : ['S1', 'S2'], road);
+    assert.deepStrictEqual(p.other.map((x) => x.planId), road === 'ma' ? ['S1', 'S2'] : ['H1', 'H2'], road);
+    // the same-road group really is all one road
+    assert.ok(p.same.every((x) => F.roadOf(x.planType) === road), road);
+  }
+});
+
+t('partitionByRoad keeps complete-before-partial inside each group (the partition beneath is intact)', () => {
+  // arrives ranked: complete first, then partial (PRFormat.planRank)
+  const plans = [maPlan('H1', 0), pdpPlan('S1', 0), maPlan('H2', 2), pdpPlan('S2', 1)];
+  const p = F.partitionByRoad(plans, 'ma');
+  assert.deepStrictEqual(p.same.map((x) => x.notCovered), [0, 2], 'MA group still complete-then-partial');
+  assert.deepStrictEqual(p.other.map((x) => x.notCovered), [0, 1], 'PDP group still complete-then-partial');
+});
+
+t('no known road ("new", "not sure", null) → no grouping; every plan stays in one list', () => {
+  const plans = [maPlan('H1'), pdpPlan('S1')];
+  for (const road of [null, undefined, 'new', 'unsure', 'nonsense']) {
+    const p = F.partitionByRoad(plans, road);
+    assert.strictEqual(p.grouped, false, String(road));
+    assert.strictEqual(p.same.length, 2, String(road));
+    assert.strictEqual(p.other.length, 0, String(road));
+    assert.strictEqual(F.isKnownRoad(road), false, String(road));
+  }
+  assert.strictEqual(F.isKnownRoad('ma'), true);
+  assert.strictEqual(F.isKnownRoad('original'), true);
+});
+
+t('roadsMix: true only when BOTH roads are present', () => {
+  assert.strictEqual(F.roadsMix([maPlan('H1'), pdpPlan('S1')]), true);
+  assert.strictEqual(F.roadsMix([maPlan('H1'), maPlan('H2')]), false);
+  assert.strictEqual(F.roadsMix([pdpPlan('S1')]), false);
+  assert.strictEqual(F.roadsMix([]), false);
+});
+
+console.log('\nPrice basis — a price never ships without its basis:');
+
+t('HEADLINE_BASIS mirrors the engine projection basis (prose and math cannot disagree)', () => {
+  const { FILLS_PER_YEAR, DAYS_MONTHS } = require('../tools/overrides');
+  const B = F.HEADLINE_BASIS;
+  // the engine projects the headline with daysSupply code '1'; its fills/year and month span must be
+  // exactly what our label and our ×fills arithmetic claim
+  assert.strictEqual(FILLS_PER_YEAR[B.daysSupplyCode], B.fillsPerYear, 'fills/year matches the engine');
+  assert.strictEqual(DAYS_MONTHS[B.daysSupplyCode] * 30, B.days, 'day span matches the engine');
+  assert.ok(B.perLabel.includes(`${B.days}-day fill`), B.perLabel);
+  assert.ok(B.ofEachLabel.includes(`${B.days}-day fill`), B.ofEachLabel);
+  assert.strictEqual(F.headlineAnnual(10), 120);   // $10.00 per 30-day fill → $120.00/yr
+  assert.strictEqual(F.headlineAnnual(0), 0);
+});
+
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

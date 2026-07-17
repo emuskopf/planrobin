@@ -158,15 +158,65 @@
     return dollars(meta.oopCapAnnual) + ' in ' + meta.planYear;
   }
 
+  // ---- The two roads ----------------------------------------------------------------------------
   // A Medicare Advantage (MA-PD / regional MA-PD) plan? Works on the raw type ("MA","MA-regional")
   // or the display label ("MA-PD","MA-PD (regional)") — all start with "MA"; a PDP never does.
   function isMaPd(planType) { return /^MA/i.test(String(planType || '')); }
+  // Which road a plan lives on. 'ma' = an all-in-one Medicare Advantage plan (replaces Original
+  // Medicare). 'original' = a stand-alone drug plan that sits ON TOP of Original Medicare. These are
+  // not interchangeable: enrolling in a PDP while on an MA plan disenrolls you from the MA plan and
+  // returns you to Original Medicare (Medicare.gov, "Switch, drop, or rejoin drug coverage").
+  function roadOf(planType) { return isMaPd(planType) ? 'ma' : 'original'; }
+  // The user's road, from the answer they gave — or inferred from a plan ID they typed. CMS contract
+  // prefixes: H/R = Medicare Advantage → they're on the MA road; S = stand-alone PDP → a PDP only
+  // exists alongside Original Medicare, so they're on the Original-Medicare road.
+  function roadFromPlanId(planId) {
+    const c = String(planId || '').trim().charAt(0).toUpperCase();
+    if (c === 'H' || c === 'R') return 'ma';
+    if (c === 'S') return 'original';
+    return null;
+  }
+  // Only a KNOWN current road can group results; "new to Medicare" and "not sure" have no road yet.
+  const KNOWN_ROADS = ['ma', 'original'];
+  function isKnownRoad(road) { return KNOWN_ROADS.indexOf(road) !== -1; }
+  // Split plans into [sameRoad, otherRoad] WITHOUT dropping any — grouping never filters. Order
+  // within each group is preserved, so the complete-vs-partial ranking underneath is untouched.
+  function partitionByRoad(plans, road) {
+    const all = plans || [];
+    if (!isKnownRoad(road)) return { same: all.slice(), other: [], grouped: false };
+    return {
+      same: all.filter((p) => roadOf(p.planType) === road),
+      other: all.filter((p) => roadOf(p.planType) !== road),
+      grouped: true,
+    };
+  }
+  // Do both roads appear in this result set? (Premium comparability + the "both kinds" line hang on this.)
+  function roadsMix(plans) {
+    const all = plans || [];
+    return all.some((p) => roadOf(p.planType) === 'ma') && all.some((p) => roadOf(p.planType) === 'original');
+  }
+
+  // ---- Price basis (a price never ships without its basis) ---------------------------------------
+  // The headline per-drug number's basis IS the basis the engine projects with: days-supply code '1'
+  // = a 30-day fill, 12 fills a year, standard retail, initial coverage. The label and the
+  // arithmetic live together here so the words and the math cannot disagree (a node test asserts this
+  // matches the engine's FILLS_PER_YEAR). Change the engine's basis → change it here, once.
+  const HEADLINE_BASIS = {
+    daysSupplyCode: '1',
+    days: 30,
+    fillsPerYear: 12,
+    perLabel: 'per 30-day fill',      // "$10.00 per 30-day fill"
+    ofEachLabel: 'of each 30-day fill', // "25% of each 30-day fill"
+  };
+  // Annualize a headline per-fill copay on that same basis.
+  function headlineAnnual(dollars) { return (Number(dollars) || 0) * HEADLINE_BASIS.fillsPerYear; }
   // The premium figure we show is the CMS Plan Information PREMIUM field. For a PDP that IS the whole
   // premium; for an MA-PD it's only the Part D drug-coverage portion (the medical/Part C premium is
   // separate and not in this file), so we label it honestly. See planrobin-premium-semantics.
   function premiumLabel(planType) { return isMaPd(planType) ? 'drug coverage premium' : 'premium'; }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel };
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel,
+    roadOf, roadFromPlanId, isKnownRoad, partitionByRoad, roadsMix, HEADLINE_BASIS, headlineAnnual };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);

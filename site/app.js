@@ -20,7 +20,9 @@ const ic = (name) => { const s = el('span', { className: 'ic' }); s.innerHTML = 
 // Which applied override → a plain-English "by federal law" badge (the trust feature).
 const LAW_BADGE = { insulin_cap_35: 'capped by federal law', acip_vaccine_free: 'free by federal law' };
 
-const state = { county: '', countySource: null /* 'zip' | 'county' | 'link' */, drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false };
+// `road` is what the reader told us (or what their plan ID implies): 'ma' | 'original' | 'new' |
+// 'unsure' | null. It only ever GROUPS results — it never filters them. Both roads always render.
+const state = { county: '', countySource: null /* 'zip' | 'county' | 'link' */, drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false, road: null };
 const PHASES = [['0', 'Pre-deductible'], ['1', 'Initial coverage'], ['3', 'Catastrophic']];
 const DAYS = [['1', '30-day'], ['2', '90-day']];
 
@@ -38,8 +40,11 @@ const TERMS = {
   'preferred-pharmacy': 'A pharmacy this plan has negotiated lower copays with. Most pharmacy chains are “preferred” on some plans and “standard” on others — it depends on the plan, not just the pharmacy.',
   'days-supply': 'How many days each fill covers. At a regular pharmacy a 90-day fill usually costs 3× the 30-day copay — the real 90-day savings come from mail order.',
   // Plan types
-  'ma-pd': 'Medicare Advantage plan that includes drug coverage — an all-in-one plan that replaces Original Medicare. Medicare Advantage plans may also have a separate medical premium not shown here — this figure is the drug-coverage portion, which is what matters for comparing drug costs.',
-  'pdp': 'A stand-alone Prescription Drug Plan you add on to Original Medicare.',
+  // The two roads. Both entries name the switching consequence, because the plan-type label is what a
+  // reader taps to find out what moving between them means. Mechanics verified against Medicare.gov
+  // ("Switch, drop, or rejoin drug coverage") — see faq.html#two-roads.
+  'ma-pd': 'An all-in-one Medicare Advantage plan — medical and drugs together from one private insurer, in place of Original Medicare. The premium shown is the drug-coverage portion; the plan may also have a separate medical premium. Joining a stand-alone drug plan (PDP) would end this plan and return you to Original Medicare.',
+  'pdp': 'A stand-alone drug plan that sits on top of Original Medicare — drugs only; your medical coverage stays with Original Medicare. If you have a Medicare Advantage plan, joining one of these ends that plan and returns you to Original Medicare.',
   'plan-id': 'This is the plan’s official Medicare ID — it’s printed on the plan’s membership card, and it’s the surest way to confirm you’re looking at the right plan on Medicare.gov, with 1-800-MEDICARE, or with a SHIP counselor.',
   // Costs
   'premium': 'The fixed monthly amount you pay to have the plan, no matter how many drugs you take.',
@@ -87,6 +92,7 @@ async function init() {
   });
   wireZip();
   wireAutocomplete();
+  wireRoad();
   $('#go').addEventListener('click', runResults);
 
   // Ctrl/⌘-P and the "Print this comparison" button both build the Plan Passport just before print.
@@ -107,6 +113,65 @@ function renderProvenance(meta) {
   const d = meta.ingestedAt ? new Date(meta.ingestedAt) : null;
   const upd = d ? d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'unknown date';
   $('#provenance').textContent = `Data: CMS ${meta.quarter} Prescription Drug Plan files, loaded ${upd} (scope: ${meta.scope || 'MO'}).`;
+}
+
+// ---------- the reader's road (optional, never filters) ----------
+// What each answer does to the results. Only 'ma'/'original' can group; "new" and "not sure" have no
+// current road, so those results stay the mixed list with the both-kinds line above them.
+const ROAD_STATUS = {
+  original: 'Drug-only plans — the kind that work with Original Medicare — are listed first. Every other plan is still here, priced, below a divider.',
+  ma: 'All-in-one Medicare Advantage plans are listed first. Every other plan is still here, priced, below a divider — with what switching would mean.',
+  new: 'Both roads are open to you, so your results show both kinds. Tap any plan-type label to see how they differ.',
+};
+
+// The wallet check — for "Not sure". The red-white-and-blue card is NOT the tell; which card she
+// hands over at the pharmacy is. Verified against Medicare.gov plan-type basics; ends at a human.
+function renderWalletCheck() {
+  const box = el('div', { className: 'wallet-check' });
+  box.append(el('p', { textContent: 'Everyone on Medicare has the red, white and blue Medicare card — so having one doesn’t tell you which kind you have. The tell is which card you hand over at the pharmacy:' }));
+  const ul = el('ul', { className: 'wallet-list' });
+  for (const [strong, rest] of [
+    ['An insurance company’s card you show at both the doctor and the pharmacy', ' — that’s likely a Medicare Advantage plan.'],
+    ['An insurance card that’s only for prescriptions, or says PDP', ' — that’s a drug plan sitting on top of Original Medicare.'],
+    ['The red, white and blue card at the doctor', ' — that’s Original Medicare.'],
+  ]) ul.append(el('li', {}, [el('strong', { textContent: strong }), document.createTextNode(rest)]));
+  box.append(ul);
+  box.append(el('p', { className: 'fine' }, [
+    document.createTextNode('Still unsure? The kind is usually printed on the card itself — HMO, PPO, or PDP. A SHIP counselor can confirm it in a minute: '),
+    el('a', { href: 'https://www.shiphelp.org', rel: 'noopener', target: '_blank', textContent: 'find a counselor' }),
+    document.createTextNode(' — or call 1-800-MEDICARE.'),
+  ]));
+  return box;
+}
+
+function setRoad(road, note) {
+  state.road = road;
+  for (const b of document.querySelectorAll('.road-choice')) b.setAttribute('aria-pressed', String(b.dataset.road === road));
+  const st = $('#road-status'); st.innerHTML = '';
+  if (note) st.append(el('p', { className: 'road-status-line', textContent: note }));
+  if (road === 'unsure') st.append(renderWalletCheck());
+  // Grouping is a view of the same data — re-render in place if results are already on screen.
+  if (state.lastData) renderResults(state.lastData);
+}
+
+function wireRoad() {
+  for (const btn of document.querySelectorAll('.road-choice')) {
+    btn.addEventListener('click', () => {
+      const road = btn.dataset.road;
+      if (state.road === road) { setRoad(null, null); return; } // tap again to un-answer
+      setRoad(road, ROAD_STATUS[road] || null);
+    });
+  }
+  // Precision shortcut: the first letter of a CMS plan ID says which road she's on (H/R = Medicare
+  // Advantage; S = a stand-alone drug plan, which only exists alongside Original Medicare).
+  const idInput = $('#road-plan-id');
+  idInput.addEventListener('input', () => {
+    const v = idInput.value.trim();
+    if (!v) { setRoad(null, null); return; }
+    const road = PRFormat.roadFromPlanId(v);
+    if (road) setRoad(road, ROAD_STATUS[road]);
+    else setRoad(null, 'That doesn’t look like a plan ID yet — they start with a letter, like H1234-001 or S5601-002.');
+  });
 }
 
 // ---------- autocomplete (fully keyboard-navigable) ----------
@@ -386,23 +451,94 @@ function renderResults(data) {
   box.append(el('div', { className: 'formula', textContent: data.formula }));
   box.append(renderKey());
 
-  // Partitioned display: plans covering ALL your drugs first, then a divider, then the rest.
-  // data.plans is already sorted complete-first by the API (PRFormat.planRank).
-  const complete = data.plans.filter((p) => p.notCovered === 0);
-  const partial = data.plans.filter((p) => p.notCovered > 0);
-  if (complete.length === 0) {
+  // The two roads framed BEFORE any plan is read (only when both kinds are actually here).
+  const framing = renderRoadFraming(data);
+  if (framing) box.append(framing);
+
+  // A no-complete note is a fact about the WHOLE county, so it's computed once, above any grouping.
+  if (data.plans.filter((p) => p.notCovered === 0).length === 0) {
     const n = state.drugs.size;
     const noteMsg = n === 1
       ? `No plan in ${data.county.name} covers your medication — every plan below is missing it.`
       : `No plan in ${data.county.name} covers all ${n} of these medications. Every plan below is missing at least one — each shows which.`;
     box.append(el('div', { className: 'no-complete-note' }, [ic('cross'), el('span', { textContent: noteMsg })]));
   }
+
+  // Two roads: when we know the reader's road, plans like theirs come first and the other road sits
+  // below a plain divider. Grouping NEVER filters — every plan renders, fully priced, either way.
+  const part = PRFormat.partitionByRoad(data.plans, state.road);
+  const sameNote = part.grouped ? renderRoadGroupNote(state.road) : null;
+  if (sameNote && part.same.length) box.append(sameNote);
+  renderPlanPartition(box, part.same);
+  if (part.grouped && part.other.length) {
+    box.append(renderRoadDivider(state.road));
+    renderPlanPartition(box, part.other);
+  }
+}
+
+// Plans covering ALL your drugs first, then a divider, then the rest. Unchanged logic — just
+// parameterized so it can run once per road group without the two partitions interfering.
+// data.plans arrives already sorted complete-first by the API (PRFormat.planRank).
+function renderPlanPartition(box, plans) {
+  const complete = plans.filter((p) => p.notCovered === 0);
+  const partial = plans.filter((p) => p.notCovered > 0);
   for (const p of complete) box.append(renderPlan(p));
   if (partial.length) {
     // Divider only when there are complete plans above to divide from (else the note above says it).
     if (complete.length > 0) box.append(el('div', { className: 'partial-divider', textContent: 'These plans don’t cover all of your medications' }));
     for (const p of partial) box.append(renderPlan(p));
   }
+}
+
+// Free, unbiased human help — a feature, never fine print (00-PRINCIPLES: the SHIP handoff).
+function shipLine() {
+  return el('p', { className: 'road-ship fine' }, [
+    document.createTextNode('Free, unbiased help deciding: your State Health Insurance Assistance Program (SHIP) — '),
+    el('a', { href: 'https://www.shiphelp.org', rel: 'noopener', target: '_blank', textContent: 'find a counselor' }),
+    document.createTextNode(' — or call 1-800-MEDICARE.'),
+  ]);
+}
+
+// Shown only when BOTH roads appear in the results — otherwise there is nothing to mix up.
+function renderRoadFraming(data) {
+  if (!PRFormat.roadsMix(data.plans)) return null;
+  const box = el('div', { className: 'road-framing', role: 'note' });
+  if (!PRFormat.isKnownRoad(state.road)) {
+    box.append(el('p', { className: 'road-mixed', textContent:
+      'Your results include both kinds of plan — different roads, not interchangeable. Tap any plan-type label to see what switching between them means.' }));
+  }
+  // Premiums across the roads are different KINDS of number; say so where they sit side by side.
+  box.append(el('p', { className: 'road-premium fine', textContent:
+    'Premiums aren’t comparable across the two roads. A Medicare Advantage plan’s drug premium sits inside a plan that replaces your medical coverage; a drug-only plan’s premium sits on top of Original Medicare, which you may also carry a Medigap policy for. Compare drug costs within a road, not across it.' }));
+  return box;
+}
+
+// The reader's own road, when it's Original Medicare: nothing here can cost them their medical
+// coverage, so say the freeing thing plainly.
+function renderRoadGroupNote(road) {
+  if (road !== 'original') return null;
+  return el('p', { className: 'road-note', textContent:
+    'These drug-only plans work with Original Medicare — you’re free to choose by price alone.' });
+}
+
+// The divider between roads + the honest consequence of crossing it. Mechanics verified against
+// Medicare.gov ("Switch, drop, or rejoin drug coverage") and the Medigap buying rules — see
+// faq.html#two-roads. Rare exceptions are named as rare, and pointed at a human.
+function renderRoadDivider(road) {
+  const wrap = el('div', { className: 'road-divider', role: 'note' });
+  if (road === 'ma') {
+    wrap.append(el('div', { className: 'road-divider-head', textContent:
+      'A different road: these plans work with Original Medicare, not with a Medicare Advantage plan.' }));
+    wrap.append(el('p', { className: 'road-warn', textContent:
+      'Enrolling in one of these drug-only plans would end your Medicare Advantage plan and return you to Original Medicare — your medical coverage would come from Original Medicare instead of your plan. Many people then add a Medigap policy; outside certain windows a Medigap insurer can consider your health history, and can turn you down or charge more. A few rare plan types work differently — a SHIP counselor can confirm yours.' }));
+  } else {
+    wrap.append(el('div', { className: 'road-divider-head', textContent:
+      'A different road: these plans replace Original Medicare with an all-in-one Medicare Advantage plan.' }));
+    wrap.append(el('p', { className: 'road-warn', textContent:
+      'Joining one of these would move your medical coverage out of Original Medicare and into the plan — it isn’t a drug-only change. A few rare plan types work differently — a SHIP counselor can confirm yours.' }));
+  }
+  wrap.append(shipLine());
+  return wrap;
 }
 
 // Coverage at a glance: how many plans cover ALL your drugs, and per drug how many cover it.
@@ -476,7 +612,11 @@ function renderPlan(p) {
     el('div', {}, [
       el('div', { className: 'plan-name', textContent: p.planName }),
       el('div', { className: 'plan-sub' }, [
-        el('span', { className: 'term', title: TERMS[planTypeSlug(p.planType)], textContent: p.planType }),
+        // A real one-tap: a title tooltip never opens on a phone, so the plan-type label is a link to
+        // its FAQ entry (new tab, so her results survive the tap). Links are exempt from the 44px
+        // control floor; the tooltip still serves hover on desktop.
+        el('a', { className: 'term plan-type-link', href: '/faq.html#' + planTypeSlug(p.planType),
+          rel: 'noopener', target: '_blank', title: TERMS[planTypeSlug(p.planType)], textContent: p.planType }),
         document.createTextNode(' · '),
         el('span', { className: 'term plan-id', title: TERMS['plan-id'], textContent: displayPlanId(p) }),
         document.createTextNode(' · '),
@@ -971,11 +1111,15 @@ function renderDrugRow(rxcui, meta, res) {
   const left = el('div', { className: 'dr-left' }, [ic('check'), nameLine]);
 
   const right = el('div', { className: 'headline' });
+  // A price never ships without its basis: per WHAT supply. The label and the ×fills-per-year come
+  // from the one constant the engine's projection basis is mirrored in (PRFormat.HEADLINE_BASIS), so
+  // the words and the arithmetic can't drift apart. (Kitchen-table test: "is that 30 or 90 days?")
+  const B = PRFormat.HEADLINE_BASIS;
   if (res.headline.kind === 'copay') {
-    right.append(el('span', { className: 'amt', textContent: `${money(res.headline.dollars)}/fill` }));
-    right.append(el('span', { className: 'annual-drug', textContent: ` · ${money(res.headline.dollars * 12)}/yr` }));
+    right.append(el('span', { className: 'amt', textContent: `${money(res.headline.dollars)} ${B.perLabel}` }));
+    right.append(el('span', { className: 'annual-drug', textContent: ` · ${money(PRFormat.headlineAnnual(res.headline.dollars))}/yr` }));
   } else {
-    right.append(el('span', { className: 'amt', textContent: res.headline.display }));
+    right.append(el('span', { className: 'amt', textContent: `${res.headline.display} ${B.ofEachLabel}` }));
     // Coinsurance: with a price + your quantity we show a dollar estimate; without a price we say so.
     if (res.estimated) {
       right.append(el('span', { className: 'annual-drug', textContent: ` · ≈ ${money(res.estimated.annual)}/yr est.` }));
@@ -1000,7 +1144,9 @@ function renderDrugRow(rxcui, meta, res) {
 function renderPhases(res) {
   const phases = res.phases;
   const det = el('details', { className: 'phases' });
-  det.append(el('summary', { textContent: 'Other phases & pharmacy channels' }));
+  // The label earns the tap by naming her question, not our data model. "Phases" is taught INSIDE,
+  // where the glossary can explain it. (Founder review, Jul 2026.)
+  det.append(el('summary', { textContent: 'How this price changes — during the year and by pharmacy' }));
 
   // Plain-English intro so the detail isn't a wall of Medicare jargon.
   det.append(el('p', { className: 'phase-intro', textContent:

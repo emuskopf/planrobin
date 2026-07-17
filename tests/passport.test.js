@@ -55,6 +55,30 @@ t('MA-PD premium caveat renders when an MA-PD is printed, and NOT for a PDP-only
   assert.ok(!noMa.some((x) => /separate medical premium/.test(x)), 'no MA-PD caveat for a PDP-only list');
 });
 
+t('two-roads caveat prints only when BOTH roads are in the list (paper has no divider)', () => {
+  // the fixture is all MA-PD → one road → no two-roads caveat
+  const oneRoad = P.passportStrings(P.passportModel(data, drugs, { shareUrl: 'x' }));
+  assert.ok(!oneRoad.some((x) => /not interchangeable/.test(x)), 'no two-roads caveat on a one-road sheet');
+
+  // a mixed sheet must carry the consequence itself
+  const mixed = JSON.parse(JSON.stringify(data));
+  mixed.plans[1].planType = 'PDP';           // make the list span both roads
+  const s = P.passportStrings(P.passportModel(mixed, drugs, { shareUrl: 'x' }));
+  const caveat = s.find((x) => /not interchangeable/.test(x));
+  assert.ok(caveat, 'mixed-road sheet carries the two-roads caveat');
+  assert.ok(/end that plan and return you to Original Medicare/.test(caveat), caveat);
+  assert.ok(/SHIP/.test(caveat), 'and hands off to a human');
+});
+
+t('per-drug price rows carry their basis (per what supply), from the shared constant', () => {
+  const B = require('../site/format.js').HEADLINE_BASIS;
+  const m = P.passportModel(data, drugs, { shareUrl: 'x' });
+  const rows = m.items.filter((i) => i.type === 'plan').flatMap((i) => i.drugs);
+  const priced = rows.map((r) => r[2]).filter((c) => /^\$/.test(c));
+  assert.ok(priced.length > 0, 'fixture has copay rows');
+  for (const c of priced) assert.ok(c.includes(B.perLabel), `price states its basis: ${c}`);
+});
+
 t('numbers/strings all come from PRFormat (no bare $0.00 totals, whole-dollar yearly totals)', () => {
   const m = P.passportModel(data, drugs, { shareUrl: 'x' });
   const totals = m.items.filter((i) => i.type === 'plan').map((i) => i.total);
@@ -70,7 +94,8 @@ t('coinsurance cost is WinAnsi-safe (≈ → ~) so the standard-font PDF can nev
   };
   const m = P.passportModel(coinsData, [['9', { label: 'somedrug', qty: 30 }]], { shareUrl: 'x' });
   const s = P.passportStrings(m);
-  assert.ok(s.some((x) => x.includes('25% ~ $500/yr')), 'coinsurance shows ~ (approx), from the estimate: ' + s.join(' | '));
+  // the estimate carries its basis too ("of each 30-day fill"), and stays WinAnsi-safe
+  assert.ok(s.some((x) => x.includes('25% of each 30-day fill ~ $500/yr')), 'coinsurance shows its basis + ~ (approx), from the estimate: ' + s.join(' | '));
   assert.ok(!s.some((x) => /≈/.test(x)), 'no un-encodable ≈ survives into the model');
 });
 

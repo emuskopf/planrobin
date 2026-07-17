@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="preload" as="font" type="font/woff2" href="/fonts/source-serif-4-latin.woff2" crossorigin />
-  <link rel="stylesheet" href="/styles.css?v=27" />
+  <link rel="stylesheet" href="/styles.css?v=31" />
 </head>
 <body>
   <header class="site-header">
@@ -91,6 +91,34 @@
       <ul id="drug-list" class="chips" aria-label="Medications you've added"></ul>
     </section>
 
+    <!-- Optional: the reader's road. Frames the ORDER of results; never filters them. Unnumbered on
+         purpose — it is not a step, and skipping it costs her nothing. -->
+    <section class="card card-optional" id="step-road">
+      <h2>What do you have today? <span class="optional-tag">Optional</span></h2>
+      <p class="help-text">Medicare comes in two kinds, and they aren’t interchangeable. Telling us yours
+        only changes the <strong>order</strong> of your results — never which plans you see. Every plan in
+        your county is priced and shown either way. Skip this if you’d rather.</p>
+
+      <div class="road-choices" id="road-choices" role="group" aria-label="What kind of Medicare do you have today?">
+        <button type="button" class="road-choice" data-road="original">Original Medicare</button>
+        <button type="button" class="road-choice" data-road="ma">A Medicare Advantage plan</button>
+        <button type="button" class="road-choice" data-road="new">New to Medicare</button>
+        <button type="button" class="road-choice" data-road="unsure">Not sure</button>
+      </div>
+      <div id="road-status" class="road-status" aria-live="polite"></div>
+
+      <details id="road-planid">
+        <summary>or type the plan ID from your insurance card (like H1234-001)</summary>
+        <label class="field" for="road-plan-id">
+          <span class="label">Plan ID from your card</span>
+          <input id="road-plan-id" type="text" autocomplete="off" placeholder="e.g. H1234-001"
+                 aria-describedby="road-planid-note" aria-label="Plan ID from your insurance card" />
+        </label>
+        <p id="road-planid-note" class="fine muted">We use the first letter only, to tell which kind of plan
+          you have. It isn’t sent anywhere.</p>
+      </details>
+    </section>
+
     <div class="actions">
       <button id="go" class="primary" disabled>See plan costs</button>
       <span id="go-hint" class="go-hint">Enter your ZIP (or pick a county) and at least one medication.</span>
@@ -148,10 +176,10 @@
     </div>
   </footer>
 
-  <script src="/format.js?v=30"></script>
-  <script src="/share.js?v=30"></script>
-  <script src="/passport.js?v=30"></script>
-  <script src="/vendor/qrcode.js?v=30"></script>
-  <script src="/app.js?v=30"></script>
+  <script src="/format.js?v=31"></script>
+  <script src="/share.js?v=31"></script>
+  <script src="/passport.js?v=31"></script>
+  <script src="/vendor/qrcode.js?v=31"></script>
+  <script src="/app.js?v=31"></script>
 </body>
 </html>
