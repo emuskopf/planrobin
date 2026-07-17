@@ -415,7 +415,20 @@ t('her plan missing a drug ALWAYS fires, whatever the money says', () => {
   assert.strictEqual(r.yourCoverage.complete, false);
 });
 
+// REGRESSION (2026-07-16): "ALWAYS fires" used to lose to the no-alternatives early return, so the
+// ONE case where silence is least affordable — her plan has a gap AND nothing else covers everything
+// either — printed no disclosure at all. The test above never caught it because it always had an
+// alternative on the board. "Always" has to mean always, including when there's nowhere to go.
+t('her plan missing a drug fires even when NOTHING else covers everything either', () => {
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 100, 1), [fpPlan('H2-002', 900, 1)]));
+  assert.strictEqual(r.fires, true, 'a gap is worth knowing even with nowhere to switch');
+  assert.strictEqual(r.reason, 'not-covered', 'NOT "no-alternatives" — that would swallow the gap');
+  assert.strictEqual(r.n, 0, 'and the copy must handle zero alternatives without saying "0 other plans"');
+  assert.strictEqual(r.atLeast, null);
+});
+
 t('SILENCE: no same-road alternative covers everything → nothing to disclose', () => {
+  // …but only when HER plan is fine. Silence is for "nothing to say", never for "nothing to be done".
   const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 100, 1)]));
   assert.strictEqual(r.fires, false);
   assert.strictEqual(r.reason, 'no-alternatives');
@@ -497,10 +510,16 @@ t('coinsurance can’t be compared by pharmacy → listed honestly, never guesse
   assert.strictEqual(a.cant[0].label, 'duloxetine 20 MG');
 });
 
-t('a not-covered drug is the fair-price check’s job, not the action plan’s', () => {
+// A not-covered drug is no ACTION (there's no pharmacy price to improve on a drug the plan won't pay
+// for) — but it is REPORTED, not dropped. Dropping it silently is what once let "nothing to move"
+// render as "Good news, you're already on the cheapest option" for a plan covering nothing she takes.
+t('a not-covered drug is no action — but it is reported, never silently dropped', () => {
   const plan = { drugs: { d1: { covered: false } } };
   const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
-  assert.deepStrictEqual([a.moves, a.keep, a.cant], [[], [], []]);
+  assert.deepStrictEqual([a.moves, a.keep, a.cant], [[], [], []], 'no action to take');
+  assert.deepStrictEqual(a.notCovered.map((x) => x.rxcui), ['d1'], 'but it comes back out');
+  assert.strictEqual(a.nothingToDo, true, 'nothing to MOVE…');
+  assert.strictEqual(a.allClear, false, '…which is NOT the same as all-clear: the verdict is not earned');
 });
 
 t('baseline honesty: a local baseline is the standardRetail anchor, and says it assumed that', () => {

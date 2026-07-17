@@ -9,6 +9,10 @@
 // Every figure comes from a shared PRFormat function that the comparison page and the passport also
 // use: groupPlans (which plan is hers), actionPlan (what to change), fairPriceCheck (what's worth
 // knowing), premiumLabel, planCoverage. Nothing is computed twice, so nothing can disagree.
+//
+// Every SENTENCE comes from PRPassport.checkupCopy — the same builders the printed sheet renders
+// from. This file decides structure (headings, icons, links, tap targets); it does not author prose.
+// That's why the PDF in her hand can't word the verdict differently from the page she read it on.
 
 // Q4 baseline + Q5 perks awareness live on the shared state object app.js owns.
 state.fill = { where: null, days: null };
@@ -81,6 +85,9 @@ function renderPlanPicker(data, group) {
     b.append(el('span', { className: 'picker-sub muted small', textContent: `${p.planType} · ${displayPlanId(p)}` }));
     b.addEventListener('click', () => {
       state.planId = PRFormat.normalizePlanId(p.planId);
+      // She picked a name off a list rather than reading an ID off her card — a softer claim, and the
+      // report's headline says so ("The plan you selected"). Same card, same math, same honesty.
+      state.planIdSource = 'picked';
       const input = $('#road-plan-id'); if (input) input.value = state.planId;   // keep the form honest
       renderCheckup(data);
       $('#results').scrollIntoView({ block: 'start' });
@@ -115,8 +122,10 @@ function renderCheckup(data) {
   }
 
   const you = group.yourPlan;
-  // 1 — HEADLINE: her plan, her total, premium given the prominence she asked for out loud.
-  box.append(renderPlan(you, { yours: true, premiumProminent: true }));
+  // 1 — HEADLINE: her plan, her total, premium given the prominence she asked for out loud. The badge
+  // mirrors how she told us: typed off the card = "Your plan"; picked from the list = "The plan you
+  // selected". One conditional, one shared vocabulary (PRFormat.yoursLabel) — the sheet says it too.
+  box.append(renderPlan(you, { yours: true, premiumProminent: true, yoursLabel: PRFormat.yoursLabel(state.planIdSource) }));
   // 2 — ACTION PLAN
   box.append(renderActionPlan(you));
   // 3 — FAIR-PRICE CHECK
@@ -132,108 +141,98 @@ function renderCheckup(data) {
 }
 
 // ---------- 2. the action plan ----------
-const CHANNEL_WORD = { preferredMail: 'this plan’s mail-order pharmacy', standardMail: 'this plan’s mail-order pharmacy' };
-const DAYS_WORD = { '1': '30-day', '2': '90-day' };
+const COPY = () => PRPassport.checkupCopy;   // the shared sentences (screen + printed sheet)
 
 function renderActionPlan(plan) {
+  const C = COPY();
   const a = PRFormat.actionPlan(plan, [...state.drugs], state.fill);
   const wrap = el('section', { className: 'card action-plan' });
-  wrap.append(el('h2', { textContent: 'What you can do about it' }));
+  wrap.append(el('h2', { textContent: C.actionHeading }));
 
-  if (a.nothingToDo && !a.cant.length) {
-    // The do-nothing verdict is a designed answer, not an empty section.
-    wrap.append(el('div', { className: 'action-good' }, [ic('check'), el('span', { textContent:
-      'Good news — the way you’re filling now is already the cheapest option on your plan. We checked.' })]));
-    if (a.keep.length) {
-      wrap.append(el('p', { className: 'muted small', textContent:
-        `Keep filling ${a.keep.map((k) => k.label).join(', ')} where you do — already your best price.` }));
-    }
+  // A gap outranks a verdict about pharmacies: she hears about the drug her plan won't pay for BEFORE
+  // she hears that her pharmacy choice is fine. (Same order as the printed sheet.)
+  if (a.notCovered.length) {
+    wrap.append(el('div', { className: 'action-warn' }, [ic('cross'), el('span', { textContent: C.actionNotCovered(a) })]));
+  }
+  if (a.allClear) {
+    // The do-nothing verdict is a designed answer, not an empty section — and it's only honest when
+    // every drug she takes was actually checkable (see PRFormat.actionPlan's allClear).
+    wrap.append(el('div', { className: 'action-good' }, [ic('check'), el('span', { textContent: C.doNothing })]));
+    const keep = C.doNothingKeep(a);
+    if (keep) wrap.append(el('p', { className: 'muted small', textContent: keep }));
     wrap.append(renderBaselineNote(a));
     return wrap;
   }
 
   // Grouped by ACTION: one instruction, the drugs it covers, the money, then how to actually do it.
   if (a.moves.length) {
-    const names = a.moves.map((m) => m.label);
-    const ds = a.moves[0].days;
-    const verb = a.baseline.where === 'mail'
-      ? `Switch ${names.length === 1 ? 'this one' : 'these ' + names.length} to ${DAYS_WORD[ds]} fills by mail`
-      : `Send ${names.length === 1 ? 'this one' : 'these ' + names.length} to mail order`;
     const act = el('div', { className: 'action-item' });
-    act.append(el('h3', { className: 'action-head', textContent: `${verb} — saving about ${PRFormat.dollars(a.saving)}/yr` }));
+    act.append(el('h3', { className: 'action-head', textContent: C.moveHead(a) }));
     const ul = el('ul', { className: 'action-drugs' });
     for (const m of a.moves) {
-      ul.append(el('li', {}, [
-        el('strong', { textContent: m.label }),
-        document.createTextNode(` — ${PRFormat.dollars(m.current)}/yr now, about ${PRFormat.dollars(m.to)}/yr as a ${DAYS_WORD[m.days]} fill by mail. Saving about ${PRFormat.dollars(m.saving)}/yr.`),
-      ]));
+      // The shared sentence, with only its leading drug name given weight. Emphasis is presentation;
+      // the characters are identical either way, so the li's text still equals the printed line.
+      const line = C.moveLine(m), li = el('li', { className: 'action-drug' });
+      if (line.indexOf(m.label) === 0) li.append(el('strong', { textContent: m.label }), document.createTextNode(line.slice(m.label.length)));
+      else li.textContent = line;
+      ul.append(li);
     }
     act.append(ul);
-    // The how-to script — a recommendation without its action is incomplete (CONTENT-RULES 16).
-    act.append(el('p', { className: 'action-how-head', textContent: 'How to do it, in one call:' }));
-    act.append(el('blockquote', { className: 'action-script', textContent:
-      'Call the number on the back of your insurance card and say: “I’d like to move my prescriptions to your mail-order pharmacy.” They’ll ask for your medication names and your doctor’s name, and they do the rest.' }));
-    // Small, reversible, losing nothing (CONTENT-RULES 15).
-    act.append(el('p', { className: 'action-reassure', textContent:
-      'This is a split, not a switch: you keep the same plan and the same pharmacy for anything else — your pharmacist stays yours. You can change back at any time.' }));
+    act.append(el('p', { className: 'action-how-head', textContent: C.howHead }));
+    act.append(el('blockquote', { className: 'action-script', textContent: C.script }));
+    act.append(el('p', { className: 'action-reassure', textContent: C.reassure }));
     wrap.append(act);
   }
 
   if (a.keep.length) {
     wrap.append(el('div', { className: 'action-item' }, [
-      el('h3', { className: 'action-head', textContent: 'Keep filling these where you do' }),
-      el('p', { textContent: `${a.keep.map((k) => k.label).join(', ')} — already your best price on this plan.` }),
+      el('h3', { className: 'action-head', textContent: C.keepHead }),
+      el('p', { textContent: C.keepBody(a) }),
     ]));
   }
-  // Never modelled: say plainly what we can't compare and why (rule 6 + trade-off honesty).
-  if (a.cant.length) {
-    wrap.append(el('p', { className: 'muted small', textContent:
-      `We can’t compare pharmacies for ${a.cant.map((c) => c.label).join(', ')} — ${a.cant.length === 1 ? 'it’s' : 'they’re'} priced as coinsurance, which depends on the drug’s price and how much you take. Your plan’s member line can quote it.` }));
-  }
-  wrap.append(renderBaselineNote(a));
+  if (a.cant.length) wrap.append(el('p', { className: 'muted small', textContent: C.cant(a) }));
+  // The baseline note explains a measurement — so it only shows when something was measured.
+  if (a.moves.length || a.keep.length) wrap.append(renderBaselineNote(a));
   return wrap;
 }
 
 // The baseline we measured from — including the assumption that could make a saving too big.
 function renderBaselineNote(a) {
-  const where = a.baseline.where === 'mail' ? 'by mail' : 'at a local pharmacy';
-  const days = DAYS_WORD[a.baseline.days];
-  const txt = `Measured against ${days} fills ${where}` + (a.baselineAssumed
-    ? ' at a standard (non-preferred) pharmacy. If yours is one of your plan’s preferred pharmacies you may already pay less than we’ve shown, which would make the saving smaller.'
-    : '.');
-  return el('p', { className: 'fine muted action-baseline', textContent: txt });
+  return el('p', { className: 'fine muted action-baseline', textContent: COPY().baseline(a) });
 }
 
 // ---------- 3. the fair-price check ----------
 function renderFairPrice(fp, data) {
   if (!fp.fires) return null;                       // silence is a designed outcome, not an omission
+  const C = COPY();
   const wrap = el('section', { className: 'card fair-price', role: 'note' });
-  const noun = PRFormat.ROAD_NOUN[fp.road] || '';
+  // Computed on HER clock: a precomputed boolean would go stale in the edge cache across October 15.
   const season = PRFormat.seasonLine(state.checkupMeta, new Date());
+  wrap.append(el('h2', { textContent: C.fairHeading }));
 
   if (fp.reason === 'not-covered') {
     const missing = fp.yourCoverage.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
-    wrap.append(el('h2', { textContent: 'Worth knowing' }));
-    wrap.append(el('div', { className: 'fp-lead' }, [ic('cross'), el('span', { textContent:
-      `Your plan doesn’t cover ${missing} — you’d pay full price for ${fp.yourCoverage.missing.length === 1 ? 'it' : 'them'}, and it wouldn’t count toward your yearly out-of-pocket cap.` })]));
-    wrap.append(el('p', { textContent:
-      `${fp.n} other ${noun} ${fp.n === 1 ? 'plan' : 'plans'} in your county ${fp.n === 1 ? 'covers' : 'cover'} everything on your list${fp.atLeast ? `, and at least one for about ${PRFormat.dollars(fp.atLeast)} less per year` : ''}.` }));
+    wrap.append(el('div', { className: 'fp-lead' }, [ic('cross'), el('span', { textContent: C.fairNotCoveredLead(fp, missing) })]));
+    wrap.append(el('p', { textContent: C.fairNotCoveredOthers(fp) }));
   } else {
-    wrap.append(el('h2', { textContent: 'Worth knowing' }));
-    wrap.append(el('p', { className: 'fp-lead-text', textContent:
-      `${fp.n} other ${noun} ${fp.n === 1 ? 'plan' : 'plans'} in your county would cover these same medications for at least ${PRFormat.dollars(fp.atLeast)} less per year.` }));
+    wrap.append(el('p', { className: 'fp-lead-text', textContent: C.fairCheaper(fp) }));
   }
 
-  // Disclosure, not alarm: staying put is explicitly a good choice, and we name what we don't check.
-  wrap.append(el('p', { textContent:
-    'If you’re happy with your plan’s doctors, staying put and using the steps above is a perfectly good choice — cheaper plans may not include your doctors, and this checkup doesn’t check networks.' }));
-  const cta = el('p', {}, [
-    document.createTextNode('If you’d like to compare, '),
-    el('a', { href: '/', textContent: 'here’s the full list' }),
-    document.createTextNode('.'),
-  ]);
-  if (season) cta.append(document.createTextNode(` (${season}.)`));
-  wrap.append(cta);
+  // "Staying put is a perfectly good choice" only makes sense when there's somewhere to go. With no
+  // alternative that covers everything, the honest next step is a person, not a plan switch.
+  if (fp.n > 0) {
+    wrap.append(el('p', { textContent: C.fairStayPut }));
+    // Screen-only shape: the sheet can't be tapped, so the model prints the address (fairComparePaper).
+    const cta = el('p', {}, [
+      document.createTextNode('If you’d like to compare, '),
+      el('a', { href: '/', textContent: 'here’s the full list' }),
+      document.createTextNode('.'),
+    ]);
+    if (season) cta.append(document.createTextNode(` (${season}.)`));
+    wrap.append(cta);
+  } else {
+    wrap.append(el('p', { textContent: C.fairNoWhereToSwitch }));
+  }
   wrap.append(el('p', { className: 'fine muted' }, [
     document.createTextNode('Free, unbiased help deciding: your State Health Insurance Assistance Program (SHIP) — '),
     el('a', { href: 'https://www.shiphelp.org', rel: 'noopener', target: '_blank', textContent: 'find a counselor' }),
@@ -247,17 +246,13 @@ function renderFairPrice(fp, data) {
 // never enumerates or prices a perk; it points at where the real answer lives (00-PRINCIPLES: the
 // system never invents).
 function renderPerks() {
+  const C = COPY();
   const wrap = el('section', { className: 'card perks' });
-  wrap.append(el('h2', { textContent: 'Your plan may include benefits nobody reminded you about' }));
-  wrap.append(el('p', { textContent:
-    'Dental, vision, over-the-counter allowances, gym memberships — many plans include them, and they’re real money. We don’t have benefits data, so we won’t guess at yours. Here’s how to find out in one call:' }));
-  wrap.append(el('p', { className: 'action-how-head', textContent: 'Call the number on the back of your card and ask:' }));
+  wrap.append(el('h2', { textContent: C.perksHeading }));
+  wrap.append(el('p', { textContent: C.perksLead }));
+  wrap.append(el('p', { className: 'action-how-head', textContent: C.perksAsk }));
   const ol = el('ol', { className: 'perks-script' });
-  for (const q of [
-    '“What extra benefits does my plan include this year?”',
-    '“Do I have an over-the-counter allowance — and how do I use it?”',
-    '“Is there anything in my plan I haven’t used this year?”',
-  ]) ol.append(el('li', {}, el('blockquote', { className: 'action-script', textContent: q })));
+  for (const q of C.perksQuestions) ol.append(el('li', {}, el('blockquote', { className: 'action-script', textContent: q })));
   wrap.append(ol);
   wrap.append(el('p', { className: 'fine muted' }, [
     document.createTextNode('It’s also in your plan’s Annual Notice of Change (ANOC) or Evidence of Coverage (EOC) — the booklet it mails you — and on your plan’s page at '),
@@ -273,6 +268,15 @@ function renderPerks() {
 // The email capture backend doesn't exist yet, so this renders as copy only — no button, no disabled
 // control, nothing that looks tappable and isn't. The "Want a reminder?" paragraph stays as plain
 // text: it's true, it sets the expectation, and cutting it leaves the section trailing off.
+//
+// TODO(capture-session): THIS is where the reminder form lands. That session — the only one that
+// knowingly runs against production — owns, as one deliberate bundle (see README § Roadmap):
+//   1. the capture backend + POST /api/subscribe (double opt-in, unsubscribe token, no list rental)
+//   2. migration 0005 — the counters (aggregate only; never a medication list, never an identifier)
+//   3. the privacy page, authored properly: YMYL, human-reviewed, linked from the form BEFORE it
+//      takes a single address. No form ships before that page does.
+//   4. tuning FAIR_PRICE_FLOOR_UNTUNED against the live DB (format.js) — needs real MO distributions
+// Until then this stays copy. A form with nothing behind it would be the first promise we've broken.
 function renderBridge() {
   const wrap = el('section', { className: 'card bridge' });
   wrap.append(el('h2', { textContent: 'One more thing worth knowing: plans change every October.' }));

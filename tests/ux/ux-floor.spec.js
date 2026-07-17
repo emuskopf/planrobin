@@ -95,23 +95,52 @@ for (const st of STATES) {
   });
 }
 
-// Passport is a PRINT artifact (letter width), not a mobile-viewport screen — audit it under print
-// media at paper width for overlap/type/contrast (horizontal overflow + touch targets are N/A on paper).
-test.describe('passport-print', () => {
-  for (const ft of FONTS) {
-    test(`passport-print @ 816px / ${ft.name}`, async ({ page }) => {
-      await H.interceptApis(page, { results: 'results-complete.json' });
-      await page.setViewportSize({ width: 816, height: 1056 });
-      await page.goto('/');
-      await H.runToResults(page);
-      await page.emulateMedia({ media: 'print' });
-      await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
-      await H.setFontScale(page, ft.scale);
-      await page.waitForTimeout(80);
-      // Print typography uses point sizes tuned for paper — the 14/18px SCREEN type floor and the
-      // 44px touch rule don't apply. We still hold the passport to no-overlap + AA contrast.
-      const violations = await H.collectViolations(page, { rules: ['overlap', 'contrast'] });
-      expect(violations, H.formatViolations({ state: 'passport-print', viewport: 816, font: ft.name }, violations)).toEqual([]);
-    });
-  }
-});
+// The passports are PRINT artifacts (letter width), not mobile-viewport screens — audited under print
+// media at paper width for overlap/type/contrast (horizontal overflow + touch targets are N/A on
+// paper). Both doors print a sheet, so both sheets get audited.
+const SHEETS = [
+  // the comparison: every plan, ranked
+  { name: 'passport-print', results: 'results-complete.json', async setup(page) { await page.goto('/'); await H.runToResults(page); } },
+  // the checkup: her plan + the action plan. Its own page 1 (verdict, bullets, scripts, small print).
+  { name: 'checkup-passport-print', results: 'results-two-roads.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('.road-choice[data-fill-where="local"]');
+    await page.click('.road-choice[data-fill-days="1"]');
+    await page.click('.road-choice[data-perks="unsure"]');
+    await page.click('#go');
+    await page.waitForSelector('.action-plan');
+  } },
+  // her plan covering nothing she takes: the warn verdict + "Worth knowing" on paper (the case that
+  // used to print "Good news — already the cheapest option").
+  { name: 'checkup-passport-print-notcovered', results: 'results-zero.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('#go');
+    await page.waitForSelector('.plan-yours');
+  } },
+];
+
+for (const sheet of SHEETS) {
+  test.describe(sheet.name, () => {
+    for (const ft of FONTS) {
+      test(`${sheet.name} @ 816px / ${ft.name}`, async ({ page }) => {
+        await H.interceptApis(page, { results: sheet.results });
+        await page.setViewportSize({ width: 816, height: 1056 });
+        await sheet.setup(page);
+        await page.emulateMedia({ media: 'print' });
+        await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+        await H.setFontScale(page, ft.scale);
+        await page.waitForTimeout(80);
+        // Print typography uses point sizes tuned for paper — the 14/18px SCREEN type floor and the
+        // 44px touch rule don't apply. We still hold the passport to no-overlap + AA contrast.
+        const violations = await H.collectViolations(page, { rules: ['overlap', 'contrast'] });
+        expect(violations, H.formatViolations({ state: sheet.name, viewport: 816, font: ft.name }, violations)).toEqual([]);
+      });
+    }
+  });
+}

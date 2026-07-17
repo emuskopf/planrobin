@@ -289,8 +289,6 @@
     const road = group.road;
     // Same road + covers everything she takes.
     const alts = (group.sameRoadOthers || []).filter((p) => planCoverage(p).complete);
-    if (!alts.length) return { fires: false, reason: 'no-alternatives', floor, road, yourCoverage };
-
     const yourTotal = planDisplayTotal(you);
     // Gaps are computed from the DISPLAYED totals (planDisplayTotal = the sum of rounded components,
     // i.e. the number printed on each card), so "at least $Y" is always the figure she could work out
@@ -300,10 +298,14 @@
     const cheaper = deltas.filter((d) => d >= floor);
     const atLeast = cheaper.length ? Math.floor(Math.min.apply(null, cheaper)) : null;
 
-    // Her plan doesn't cover everything she takes → she needs to know, whatever the money says.
+    // Her plan doesn't cover everything she takes → she needs to know, whatever the money says AND
+    // whether or not anything better exists. This check comes FIRST, above the no-alternatives exit:
+    // "no plan in your county covers everything" is exactly the case where a silent report would be
+    // worst, and n === 0 is a fact the copy can state, not a reason to say nothing.
     if (!yourCoverage.complete) {
       return { fires: true, reason: 'not-covered', n: alts.length, atLeast, floor, road, yourCoverage };
     }
+    if (!alts.length) return { fires: false, reason: 'no-alternatives', floor, road, yourCoverage };
     if (!cheaper.length) return { fires: false, reason: 'below-floor', floor, road, yourCoverage };
     return { fires: true, reason: 'cheaper', n: cheaper.length, atLeast, floor, road, yourCoverage };
   }
@@ -336,12 +338,16 @@
     const where = (baseline && baseline.where) || 'local';
     const days = (baseline && baseline.days) || '1';
     const baseChannel = where === 'mail' ? 'preferredMail' : 'standardRetail';
-    const moves = [], keep = [], cant = [];
+    const moves = [], keep = [], cant = [], notCovered = [];
     let saving = 0;
     for (const entry of (drugs || [])) {
       const rxcui = entry[0], meta = entry[1] || {};
       const res = plan && plan.drugs && plan.drugs[rxcui];
-      if (!res || !res.covered) continue;            // not-covered is the fair-price check's job
+      // Not-covered drugs have no pharmacy price to improve, so they're not an ACTION — but they are
+      // REPORTED, never silently dropped. Skipping them quietly is what let "nothing to move" render
+      // as "Good news, you're already on the cheapest option" for a plan covering nothing she takes.
+      // The renderer owes her that word before any verdict about pharmacies.
+      if (!res || !res.covered) { notCovered.push({ rxcui: rxcui, label: meta.label }); continue; }
       const current = annualOfCell(cellAt(res.phases, days, baseChannel), days);
       if (current === null) { cant.push({ rxcui: rxcui, label: meta.label }); continue; }
       // Mail's whole point is the 90-day discount, so search mail across BOTH days-supplies.
@@ -361,10 +367,14 @@
       }
     }
     return {
-      moves: moves, keep: keep, cant: cant,
+      moves: moves, keep: keep, cant: cant, notCovered: notCovered,
       saving: round(saving),
-      // true when there is genuinely nothing to change — the warm do-nothing verdict, not an absence
+      // No pharmacy move to make. NOT the same as "all is well" — read it with `cant` and `notCovered`
+      // before speaking: the warm verdict is only honest when there's nothing else outstanding.
       nothingToDo: moves.length === 0,
+      // The warm do-nothing verdict has EARNED its "we checked" only when every drug she takes was
+      // actually checkable: covered, priced as a copay, and already at its best channel.
+      allClear: moves.length === 0 && cant.length === 0 && notCovered.length === 0,
       baseline: { where: where, days: days, channel: baseChannel },
       // she told us she already fills at a standard local pharmacy → the baseline caveat applies
       baselineAssumed: where === 'local',
@@ -391,7 +401,14 @@
   // separate and not in this file), so we label it honestly. See planrobin-premium-semantics.
   function premiumLabel(planType) { return isMaPd(planType) ? 'drug coverage premium' : 'premium'; }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel,
+  // She told us which plan is hers with two different levels of confidence: typing the ID off her card
+  // is a claim of ownership; picking a name out of a list is a selection. The card, the math and the
+  // honesty are identical either way — only the word changes, so the page never sounds more certain
+  // about her life than she was. Default is "Your plan" (on the comparison page, typing is the only way in).
+  const YOURS_LABEL = { typed: 'Your plan', picked: 'The plan you selected' };
+  function yoursLabel(source) { return YOURS_LABEL[source] || YOURS_LABEL.typed; }
+
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel, yoursLabel,
     roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
     normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual,
     inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED, actionPlan };

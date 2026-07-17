@@ -22,7 +22,8 @@ const LAW_BADGE = { insulin_cap_35: 'capped by federal law', acip_vaccine_free: 
 
 // `road` is what the reader told us (or what their plan ID implies): 'ma' | 'original' | 'new' |
 // 'unsure' | null. It only ever GROUPS results — it never filters them. Both roads always render.
-const state = { county: '', countySource: null /* 'zip' | 'county' | 'link' */, drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false, road: null };
+const state = { county: '', countySource: null /* 'zip' | 'county' | 'link' */, drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false, road: null,
+  planId: null, planIdSource: null /* 'typed' (read off her card) | 'picked' (chosen from the list) */ };
 const PHASES = [['0', 'Pre-deductible'], ['1', 'Initial coverage'], ['3', 'Catastrophic']];
 const DAYS = [['1', '30-day'], ['2', '90-day']];
 
@@ -104,8 +105,11 @@ async function init() {
   // Ctrl/⌘-P and the "Print this comparison" button both build the Plan Passport just before print.
   window.addEventListener('beforeprint', () => {
     if (!state.lastData) return;
+    // null when the checkup doesn't know which plan is hers — print the page, not a sheet about nobody
+    // (and never `append(null)`, which would quietly print the word "null").
+    const doc = buildPassport(state.lastData); if (!doc) return;
     const host = ensurePassportHost();
-    host.innerHTML = ''; host.append(buildPassport(state.lastData));
+    host.innerHTML = ''; host.append(doc);
     document.body.classList.add('printing-passport');
   });
   window.addEventListener('afterprint', () => { document.body.classList.remove('printing-passport'); });
@@ -178,10 +182,13 @@ function wireRoad() {
     const raw = idInput.value;
     const v = PRFormat.normalizePlanId(raw);
     let hint = '';
-    if (!v) state.planId = null;
-    else if (PRFormat.isPlanIdShape(v)) state.planId = v;
+    // Typed off the card: the strongest claim she can make about which plan is hers. Recorded so the
+    // checkup's headline can mirror her confidence (see PRFormat.yoursLabel).
+    if (!v) { state.planId = null; state.planIdSource = null; }
+    else if (PRFormat.isPlanIdShape(v)) { state.planId = v; state.planIdSource = 'typed'; }
     else {
       state.planId = null;
+      state.planIdSource = null;
       // Incremental + friendly: stay quiet while it could still become a valid ID; only speak up once
       // it can't. Spaces and case are already forgiven by normalizePlanId.
       if (!PRFormat.isPlanIdPrefix(v)) hint = 'Plan IDs look like H1234-001: a letter, four digits, a dash, three digits.';
@@ -675,10 +682,11 @@ function renderPlan(p, opts) {
     annual,
   ]);
   const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') + (opts.yours ? ' plan-yours' : '') }, [head]);
-  // "Your plan" — semantic (icon + word + color), sentence case, never a shout.
+  // "Your plan" — semantic (icon + word + color), sentence case, never a shout. The word mirrors how
+  // she told us it was hers (typed the ID vs picked it from a list); the treatment never changes.
   if (opts.yours) {
     const badge = el('div', { className: 'yours-badge' });
-    badge.append(ic('save'), el('span', { textContent: 'Your plan' }));
+    badge.append(ic('save'), el('span', { textContent: opts.yoursLabel || PRFormat.yoursLabel() }));
     card.insertBefore(badge, head);
   }
   // The checkup gives the premium its own line: the first thing a real reader asked out loud was
@@ -872,16 +880,22 @@ function loadPdfLib() {
   return _pdfLibPromise;
 }
 
+// Each door prints its own sheet — one noun, used for the bar's heading, the file, and the share sheet.
+const SHEET = PAGE === 'checkup'
+  ? { noun: 'checkup', shareTitle: 'PlanRobin Medicare checkup', shareText: 'My Medicare drug plan checkup from PlanRobin.' }
+  : { noun: 'comparison', shareTitle: 'PlanRobin drug plan comparison', shareText: 'My Medicare drug plan comparison from PlanRobin.' };
+
 async function runPdf(btn, mode) {
   const data = state.lastData; if (!data) return;
   const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…';
   try {
     await loadPdfLib();
-    const { blob, filename } = await renderPassportPdf(passportModelNow(data));
+    const model = passportModelNow(data); if (!model) return;   // checkup with no plan → nothing to print
+    const { blob, filename } = await renderPassportPdf(model);
     if (mode === 'share') {
       const file = new File([blob], filename, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: 'PlanRobin drug plan comparison', text: 'My Medicare drug plan comparison from PlanRobin.' }); } catch (_) { /* user cancelled */ }
+        try { await navigator.share({ files: [file], title: SHEET.shareTitle, text: SHEET.shareText }); } catch (_) { /* user cancelled */ }
         return;
       }
     }
@@ -897,7 +911,8 @@ async function runPdf(btn, mode) {
 // Chrome fires `beforeprint` unreliably — see the mobile-print fix). Desktop path.
 function printPassport() {
   const data = state.lastData; if (!data) return;
-  const host = ensurePassportHost(); host.innerHTML = ''; host.append(buildPassport(data));
+  const doc = buildPassport(data); if (!doc) return;
+  const host = ensurePassportHost(); host.innerHTML = ''; host.append(doc);
   document.body.classList.add('printing-passport');
   window.print();
   setTimeout(() => document.body.classList.remove('printing-passport'), 1000); // belt-and-suspenders vs missing afterprint
@@ -905,7 +920,7 @@ function printPassport() {
 
 function renderShareBar(data) {
   const bar = el('div', { className: 'share-bar' });
-  bar.append(el('h3', { className: 'share-h', textContent: 'Save or share this comparison' }));
+  bar.append(el('h3', { className: 'share-h', textContent: `Save or share this ${SHEET.noun}` }));
   bar.append(el('p', { className: 'share-lead', textContent: 'Save it, print it anywhere, or send it to someone helping you.' }));
   const actions = el('div', { className: 'share-actions' });
 
@@ -969,10 +984,23 @@ function buildQR(text) {
   } catch (_) { return null; } // the URL is printed as text regardless
 }
 
-// Build the shared model from current state (URL fragment kept fresh for the share link).
+// Build the shared model from current state (URL fragment kept fresh for the share link). THE seam
+// between the two doors: each page prints its own sheet, and everything downstream — Download PDF,
+// Print, the parity test — goes through here, so neither can drift onto the other's model.
+// Returns null when the checkup doesn't know which plan is hers (the screen shows the picker instead).
 function passportModelNow(data) {
   updateFragment();
-  return PRPassport.passportModel(data, [...state.drugs], { shareUrl: location.href });
+  const shareUrl = location.href;
+  if (PAGE === 'checkup') {
+    return PRPassport.checkupModel(data, [...state.drugs], {
+      shareUrl,
+      road: state.road, planId: state.planId, planIdSource: state.planIdSource,
+      fill: state.fill, perks: state.perks,
+      // The season verdict is computed on HER clock, from the window the engine carries on /api/meta.
+      meta: state.checkupMeta, now: new Date(),
+    });
+  }
+  return PRPassport.passportModel(data, [...state.drugs], { shareUrl });
 }
 
 // ---- DOM renderer: walks the shared model into the 2-page print passport (.pp-* classes) ----
@@ -982,6 +1010,8 @@ function planCardDom(it) {
     el('div', { className: 'pp-plan-name', textContent: it.name }),
     el('div', { className: 'pp-plan-total' + (it.noCover ? ' pp-no-cover' : ''), textContent: it.total }),
   ]));
+  // Order is the parity contract: name, total, [premium], sub — matches passportStrings + the PDF.
+  if (it.premium) card.append(el('div', { className: 'pp-plan-premium', textContent: it.premium }));
   card.append(el('div', { className: 'pp-plan-sub', textContent: it.sub }));
   if (it.partial) card.append(el('div', { className: 'pp-partial', textContent: it.partial }));
   if (it.savings) card.append(el('div', { className: 'pp-savings', textContent: it.savings }));
@@ -1011,6 +1041,9 @@ function renderPassportDom(model) {
   const flushHead = () => { if (brand || asof) { const left = el('div', { className: 'pp-brandmark' }, [oneColorRobin(), el('div', { className: 'pp-brand', textContent: brand })]); page.insertBefore(el('div', { className: 'pp-head' }, [left, el('div', { className: 'pp-asof', textContent: asof })]), page.firstChild); brand = asof = ''; } };
   const inputs = () => { let d = page.querySelector('.pp-inputs'); if (!d) { d = el('div', { className: 'pp-inputs' }); page.append(d); } return d; };
   const listIn = (host, cls) => { let ul = host.querySelector('.' + cls); if (!ul) { ul = el('ul', { className: cls }); host.append(ul); } return ul; };
+  // Bullets can appear in more than one place on a sheet, so they attach to the list at the TAIL and
+  // start a fresh one otherwise — never reaching back into an earlier list and scrambling model order.
+  const listTail = (host, cls) => { const last = host.lastElementChild; if (last && last.classList.contains(cls)) return last; const ul = el('ul', { className: cls }); host.append(ul); return ul; };
 
   for (const it of model.items) {
     if (it.pageBreak) { flushHead(); page = el('section', { className: 'pp-page pp-break' }); doc.append(page); }
@@ -1022,18 +1055,30 @@ function renderPassportDom(model) {
     else if (it.type === 'coverage') page.append(el('div', { className: 'pp-coverage', textContent: it.text }));
     else if (it.type === 'h') page.append(el('h2', { className: 'pp-h', textContent: it.text }));
     else if (it.type === 'plan') page.append(planCardDom(it));
+    // ---- the checkup's page 1: a verdict, an instruction, the words to say, the small print ----
+    // Semantic state on paper is word + weight + color: the sentence itself carries the word, so a
+    // black-and-white photocopy of this sheet still says the same thing.
+    else if (it.type === 'verdict') page.append(el('div', { className: 'pp-verdict pp-verdict-' + (it.kind || 'good'), textContent: it.text }));
+    else if (it.type === 'bullet') listTail(page, 'pp-bullets').append(el('li', { className: 'pp-bullet', textContent: it.text }));
+    else if (it.type === 'strong') page.append(el('p', { className: 'pp-strong', textContent: it.text }));
+    else if (it.type === 'script') page.append(el('blockquote', { className: 'pp-script', textContent: it.text }));
+    else if (it.type === 'fine') page.append(el('p', { className: 'pp-fine', textContent: it.text }));
     else if (it.type === 'caveat') listIn(page, 'pp-caveats').append(el('li', { textContent: it.text }));
     else if (it.type === 'h3') { const sh = el('div', { className: 'pp-share' }); sh.append(el('h3', { className: 'pp-h3', textContent: it.text })); const cols = el('div', { className: 'pp-share-cols' }); const left = el('div', {}); cols.append(left); sh.append(cols); page.append(sh); page._share = { cols, left }; }
-    else if (it.type === 'note') page._share.left.append(el('p', { className: 'pp-note', textContent: it.text }));
-    else if (it.type === 'path') page._share.left.append(el('div', { className: 'pp-path' }, [el('span', { className: 'pp-path-icon', 'aria-hidden': 'true', textContent: it.icon }), el('span', { className: 'pp-path-text', textContent: it.text })]));
-    else if (it.type === 'url') page._share.left.append(el('a', { className: 'pp-url', href: it.link || it.text, textContent: it.text }));
-    else if (it.type === 'qr') { const q = buildQR(it.url); if (q) page._share.cols.append(el('div', { className: 'pp-qr-wrap' }, [q])); }
+    // Notes are the checkup's workhorse paragraph and appear on BOTH pages: inside the reopen block
+    // (the comparison's only use) and in the report body above it. So they land in the share column
+    // when one is open, and in the page otherwise — never assuming an h3 came first.
+    else if (it.type === 'note') (page._share ? page._share.left : page).append(el('p', { className: 'pp-note', textContent: it.text }));
+    // path/url/qr belong to the reopen block by construction; guarded so a model change can't crash print.
+    else if (it.type === 'path' && page._share) page._share.left.append(el('div', { className: 'pp-path' }, [el('span', { className: 'pp-path-icon', 'aria-hidden': 'true', textContent: it.icon }), el('span', { className: 'pp-path-text', textContent: it.text })]));
+    else if (it.type === 'url' && page._share) page._share.left.append(el('a', { className: 'pp-url', href: it.link || it.text, textContent: it.text }));
+    else if (it.type === 'qr' && page._share) { const q = buildQR(it.url); if (q) page._share.cols.append(el('div', { className: 'pp-qr-wrap' }, [q])); }
   }
   flushHead();
   return doc;
 }
 
-function buildPassport(data) { return renderPassportDom(passportModelNow(data)); }
+function buildPassport(data) { const m = passportModelNow(data); return m ? renderPassportDom(m) : null; }
 
 // ---- PDF renderer: same model → a text-based (selectable), self-hosted PDF. Records every string it
 // draws so a test can prove PDF text == print-DOM text == the model. ----
@@ -1135,12 +1180,20 @@ async function renderPassportPdf(model) {
     else if (it.type === 'plan') {
       text(it.name, { bold: true, size: 12, gap: 1 });
       text(it.total, { bold: true, size: 12, color: it.noCover ? c.red : c.ink, gap: 1 });
+      // Same order as the model + the print DOM: name, total, [premium], sub.
+      if (it.premium) text(it.premium, { bold: true, size: 11, gap: 1 });
       text(it.sub, { size: 9, color: c.gray });
       if (it.partial) text(it.partial, { size: 9, color: c.red });
       if (it.savings) text(it.savings, { size: 9.5, color: c.green });
       for (const row of it.drugs) drugRow(row);
       rule();
     }
+    // ---- the checkup's page 1 (see the DOM renderer for the pairing) ----
+    else if (it.type === 'verdict') { y -= 2; text(it.text, { bold: true, size: 11, color: it.kind === 'warn' ? c.red : c.green }); }
+    else if (it.type === 'bullet') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
+    else if (it.type === 'strong') text(it.text, { bold: true, size: 10.5, gap: 1 });
+    else if (it.type === 'script') text(it.text, { size: 10, indent: 16, color: c.gray });
+    else if (it.type === 'fine') text(it.text, { size: 9, color: c.gray });
     else if (it.type === 'caveat') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
     else if (it.type === 'h3') { y -= 4; text(it.text, { serif: true, size: 12 }); }
     else if (it.type === 'note') text(it.text, { size: 9.5 });

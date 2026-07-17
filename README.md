@@ -350,3 +350,47 @@ the second returns header `x-cache: HIT` with `queries: 0` in its log line.
   can’t be dollar-totaled without a price, so they show as `%` and the estimate is flagged
   incomplete (`$X+`) rather than silently under-counted.
 - Brand vs generic is an **explicit pick** from the suggestions, never a silent substitution.
+
+---
+
+# Roadmap — filed work orders
+
+Each heading below is a **session's worth of work that has been deliberately deferred**, with its
+scope fixed at the time it was deferred. If you are picking one up, this is the work order: read it
+before you start, and update it when you finish.
+
+## The capture session (NOT yet built — one deliberate bundle)
+
+The 5-Minute Checkup ends with a bridge: *plans change every October; want a reminder?* Today that
+bridge is **copy only** — there is no form, because there is nothing behind it and a control that
+looks tappable and isn't would be the first promise this product has broken. The hook is marked
+`TODO(capture-session)` at the render site (`site/checkup.js`, `renderBridge`).
+
+This session is the **only one that knowingly runs against production**, so it ships as one bundle,
+after Evan's hand test and user zero's review of the checkup on preview:
+
+1. **Capture backend + `POST /api/subscribe`** — double opt-in, an unsubscribe token in every send,
+   one note a year in September. The address is the only thing stored; never the medication list.
+   No list rental, no third-party marketing pixels, ever.
+2. **Migration 0005 — counters.** Aggregate only: enough to know whether the checkup is used and
+   where it's abandoned. **Never** a medication list, never an identifier, never anything that could
+   re-identify a search. If a counter can't be justified against `docs/00-PRINCIPLES.md`, it doesn't
+   ship.
+3. **The privacy page, authored properly.** YMYL — human-written, human-reviewed, in Evan's voice,
+   not reconstructed by a session. It must be **live and linked from the form before the form takes
+   a single address**. Ordering is not negotiable: page first, then form.
+4. **Tune `FAIR_PRICE_FLOOR_UNTUNED`** (`site/format.js`). It ships at **$100 as an untuned
+   placeholder** — it has never been measured against real Missouri distributions. Tune it in CI
+   against the live DB; **do not tune it against `.pglite`**, whose subset is the hermetic acceptance
+   fixture and is not representative. The tests pin the boundary *behaviour*, not the number, so
+   re-tuning is a one-line data change.
+
+Why bundled: each piece is small, but every one of them touches the promise the trust strip makes on
+the homepage. They get reviewed together, against the constitution, in one sitting — not dribbled in.
+
+## Standing errand — 2026-07-29 quarterly ingest
+
+Read the record layout that ships **inside** the PUF download and capture the **verbatim CMS
+`PREMIUM` definition** into the § Data sources table + the comment at `ingest/parse.js:88`; confirm
+or amend the on-screen label. **If CMS's text contradicts the Part D-portion reading, stop and tell
+Evan before touching copy.** See `planrobin-premium-semantics`.

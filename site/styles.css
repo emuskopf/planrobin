@@ -291,6 +291,12 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
   color: var(--ink); padding: var(--sp-3) var(--sp-4); background: var(--good-tint);
   border: 1px solid var(--good); border-radius: var(--radius); }
 .action-good .ic { flex: none; color: var(--good); margin-top: 2px; }
+/* A gap her plan won't pay for. Same shape as the good verdict, opposite semantic — icon + word +
+   color, never colour alone. It sits ABOVE any pharmacy verdict, because it outranks one. */
+.action-warn { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-base);
+  color: var(--ink); padding: var(--sp-3) var(--sp-4); background: var(--notcov-tint);
+  border: 1px solid var(--notcov); border-radius: var(--radius); margin-bottom: var(--sp-3); }
+.action-warn .ic { flex: none; color: var(--notcov); margin-top: 2px; }
 .action-baseline { margin: var(--sp-3) 0 0; }
 /* the fair-price check — disclosure, never alarm: amber, not red; calm, not loud */
 .fair-price { border-left: 4px solid var(--caution); }
@@ -626,6 +632,8 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-plan-name { font-weight: 700; font-size: 11pt; }
   .pp-plan-total { font-weight: 800; font-size: 13pt; white-space: nowrap; }
   .pp-plan-sub { font-size: 9pt; color: #333; margin: 1pt 0 3pt; }
+  /* the checkup gives the premium its own line — the question a real reader asked out loud first */
+  .pp-plan-premium { font-size: 11pt; font-weight: 700; margin: 2pt 0 1pt; }
   .pp-plan.pp-plan-partial { border-left: 3pt solid #b00020; }
   .pp-plan-total.pp-no-cover { font-size: 9.5pt; font-weight: 700; color: #b00020; }
   .pp-partial { font-size: 9pt; color: #b00020; font-weight: 600; margin: 2pt 0; }
@@ -636,6 +644,19 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-drugs td:nth-child(2) { width: 22%; }
   .pp-caveats { font-size: 10pt; padding-left: 16pt; }
   .pp-caveats li { margin: 3pt 0; }
+  /* ---- the checkup's page 1 ---- */
+  /* A verdict on paper: the WORD carries the meaning (the sentence says "Good news" / "doesn't
+     cover"), weight carries the emphasis, and color is the last layer — so a black-and-white
+     photocopy of this sheet loses nothing. */
+  .pp-verdict { font-size: 11pt; font-weight: 700; margin: 5pt 0 3pt; page-break-inside: avoid; }
+  .pp-verdict-good { color: #146c3a; }
+  .pp-verdict-warn { color: #b00020; }
+  .pp-bullets { font-size: 10pt; margin: 3pt 0; padding-left: 16pt; }
+  .pp-bullets li { margin: 2pt 0; }
+  .pp-strong { font-size: 10.5pt; font-weight: 700; margin: 6pt 0 2pt; }
+  /* the words to say, set apart as something to read aloud — not decoration */
+  .pp-script { font-size: 10pt; margin: 2pt 0 4pt; padding: 4pt 8pt; border-left: 2pt solid #999; color: #222; page-break-inside: avoid; }
+  .pp-fine { font-size: 9pt; color: #333; margin: 3pt 0; }
   .pp-share-cols { display: flex; gap: 16pt; align-items: flex-start; }
   .pp-url { display: inline-block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8pt; word-break: break-all; color: #0d4fa0; text-decoration: underline; background: #f4f4f4; padding: 4pt; border-radius: 3pt; }
   .pp-note { font-size: 9.5pt; }
