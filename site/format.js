@@ -308,6 +308,70 @@
     return { fires: true, reason: 'cheaper', n: cheaper.length, atLeast, floor, road, yourCoverage };
   }
 
+  // ---- The action plan ---------------------------------------------------------------------------
+  // Grouped by ACTION, not by drug — she does one thing (move these two to mail), not five separate
+  // errands. Every dollar is a published cell × the engine's fills-per-year; nothing is modelled.
+  // Only COPAY cells annualise honestly: a coinsurance drug needs a price AND her dose, so those are
+  // listed as "can't compare by pharmacy" rather than guessed (rule 6).
+  //
+  // BASELINE HONESTY: "a local pharmacy" is anchored to standardRetail — the same anchor the whole
+  // product ranks on. If her local pharmacy happens to be one of the plan's PREFERRED ones she may
+  // already pay less, which would make a claimed saving too big; the renderer must say so. We never
+  // silently assume the worse baseline to inflate a number.
+  const ACTION_FILLS = { '1': 12, '2': 4 };  // mirrors the engine's FILLS_PER_YEAR (pinned by test)
+  const MAIL_CHANNELS = ['preferredMail', 'standardMail'];
+  const ACTION_MIN_DEFAULT = 25;             // the engine's calm floor — don't cry opportunity over $3
+
+  function cellAt(phases, ds, chan) {
+    const lvl = phases && phases['1'] && phases['1'].byDaysSupply && phases['1'].byDaysSupply[ds];
+    return lvl ? lvl[chan] : null;
+  }
+  const annualOfCell = (cell, ds) => (cell && cell.kind === 'copay' && ACTION_FILLS[ds])
+    ? Number(cell.dollars) * ACTION_FILLS[ds] : null;
+
+  // baseline = { where: 'local'|'mail', days: '1'|'2' } (Q4). Defaults to the product's anchor:
+  // a 30-day fill at a standard pharmacy.
+  function actionPlan(plan, drugs, baseline, opts) {
+    const min = (opts && opts.min != null) ? opts.min : ACTION_MIN_DEFAULT;
+    const where = (baseline && baseline.where) || 'local';
+    const days = (baseline && baseline.days) || '1';
+    const baseChannel = where === 'mail' ? 'preferredMail' : 'standardRetail';
+    const moves = [], keep = [], cant = [];
+    let saving = 0;
+    for (const entry of (drugs || [])) {
+      const rxcui = entry[0], meta = entry[1] || {};
+      const res = plan && plan.drugs && plan.drugs[rxcui];
+      if (!res || !res.covered) continue;            // not-covered is the fair-price check's job
+      const current = annualOfCell(cellAt(res.phases, days, baseChannel), days);
+      if (current === null) { cant.push({ rxcui: rxcui, label: meta.label }); continue; }
+      // Mail's whole point is the 90-day discount, so search mail across BOTH days-supplies.
+      let best = null, bestDays = null, bestChannel = null;
+      for (const ds of ['1', '2']) {
+        for (const ch of MAIL_CHANNELS) {
+          const a = annualOfCell(cellAt(res.phases, ds, ch), ds);
+          if (a !== null && (best === null || a < best)) { best = a; bestDays = ds; bestChannel = ch; }
+        }
+      }
+      const delta = best === null ? null : current - best;
+      if (delta !== null && delta >= min) {
+        moves.push({ rxcui: rxcui, label: meta.label, current: current, to: best, saving: delta, days: bestDays, channel: bestChannel });
+        saving += delta;
+      } else {
+        keep.push({ rxcui: rxcui, label: meta.label, annual: current });
+      }
+    }
+    return {
+      moves: moves, keep: keep, cant: cant,
+      saving: round(saving),
+      // true when there is genuinely nothing to change — the warm do-nothing verdict, not an absence
+      nothingToDo: moves.length === 0,
+      baseline: { where: where, days: days, channel: baseChannel },
+      // she told us she already fills at a standard local pharmacy → the baseline caveat applies
+      baselineAssumed: where === 'local',
+      min: min,
+    };
+  }
+
   // ---- Price basis (a price never ships without its basis) ---------------------------------------
   // The headline per-drug number's basis IS the basis the engine projects with: days-supply code '1'
   // = a 30-day fill, 12 fills a year, standard retail, initial coverage. The label and the
@@ -330,7 +394,7 @@
   const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel,
     roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
     normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual,
-    inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED };
+    inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED, actionPlan };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);

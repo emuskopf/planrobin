@@ -448,6 +448,69 @@ t('the floor is injectable, so re-tuning is a data change (not a code change)', 
   assert.strictEqual(F.fairPriceCheck(g, { floor: 50 }).fires, true, 'same data, tuned floor → fires');
 });
 
+console.log('\nAction plan — grouped by action, every dollar from a published cell:');
+
+// phases: initial-coverage level '1', byDaysSupply '1' (30-day) / '2' (90-day), per channel.
+const apPlan = (cells) => ({ drugs: { d1: { covered: true, phases: ph({ '1': cells }) } } });
+const apDrugs = [['d1', { label: 'duloxetine 20 MG' }]];
+
+t('a real mail saving becomes a MOVE, priced from cells × the engine fills-per-year', () => {
+  // $10 per 30-day standard retail = $120/yr; $6 per 90-day by mail = $24/yr → save $96
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredMail: copay(30) }, '2': { preferredMail: copay(6) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.strictEqual(a.moves.length, 1);
+  assert.strictEqual(a.moves[0].current, 120);
+  assert.strictEqual(a.moves[0].to, 24, '$6 × 4 fills');
+  assert.strictEqual(a.moves[0].saving, 96);
+  assert.strictEqual(a.moves[0].days, '2', 'mail’s point is the 90-day discount');
+  assert.strictEqual(a.saving, 96);
+  assert.strictEqual(a.nothingToDo, false);
+});
+
+t('below the calm floor → KEEP, not a move (we don’t cry opportunity over $3)', () => {
+  // $10/30-day retail = $120/yr vs $30/90-day mail = $120/yr → $0 saving
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredMail: copay(10) }, '2': { preferredMail: copay(30) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.deepStrictEqual(a.moves, []);
+  assert.strictEqual(a.keep.length, 1);
+  assert.strictEqual(a.nothingToDo, true, 'the warm do-nothing verdict is a designed state');
+  assert.strictEqual(a.saving, 0);
+  assert.strictEqual(a.min, 25);
+});
+
+t('already on mail → the action is the 90-day upgrade, measured from HER baseline', () => {
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredMail: copay(10) }, '2': { preferredMail: copay(5) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'mail', days: '1' });   // she already fills by mail
+  assert.strictEqual(a.baseline.channel, 'preferredMail', 'baseline follows what she told us');
+  assert.strictEqual(a.moves[0].current, 120, '$10 × 12 by mail today');
+  assert.strictEqual(a.moves[0].to, 20, '$5 × 4 at 90-day');
+  assert.strictEqual(a.moves[0].saving, 100);
+  assert.strictEqual(a.baselineAssumed, false, 'no standard-pharmacy assumption when she says mail');
+});
+
+t('coinsurance can’t be compared by pharmacy → listed honestly, never guessed', () => {
+  const plan = apPlan({ '1': { standardRetail: coins(0.25), preferredMail: coins(0.25) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.deepStrictEqual(a.moves, []);
+  assert.deepStrictEqual(a.keep, []);
+  assert.strictEqual(a.cant.length, 1, 'named, not silently dropped and not modelled');
+  assert.strictEqual(a.cant[0].label, 'duloxetine 20 MG');
+});
+
+t('a not-covered drug is the fair-price check’s job, not the action plan’s', () => {
+  const plan = { drugs: { d1: { covered: false } } };
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.deepStrictEqual([a.moves, a.keep, a.cant], [[], [], []]);
+});
+
+t('baseline honesty: a local baseline is the standardRetail anchor, and says it assumed that', () => {
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredRetail: copay(2), preferredMail: copay(1) } });
+  const a = F.actionPlan(plan, apDrugs, {});   // defaults
+  assert.strictEqual(a.baseline.channel, 'standardRetail');
+  assert.strictEqual(a.baseline.days, '1');
+  assert.strictEqual(a.baselineAssumed, true, 'the renderer must disclose the assumption — a preferred local pharmacy would make the saving smaller');
+});
+
 console.log('\nPrice basis — a price never ships without its basis:');
 
 t('HEADLINE_BASIS mirrors the engine projection basis (prose and math cannot disagree)', () => {
