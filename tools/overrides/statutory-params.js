@@ -39,6 +39,22 @@ const VACCINE_RULE = {
   statute: 'SSA 1860D-2(b)(8) / IRA 11401; CMS MLN908764',
 };
 
+// The Medicare Open Enrollment window (AEP): October 15 – December 7 every year, with changes
+// effective January 1. Set in statute/regulation, not indexed like the dollar params, so it is one
+// constant rather than a per-year table — but it lives HERE, with the other verified parameters, so
+// season-aware prose renders from the same source the rest of the engine does (never a hardcoded date
+// in copy). VERIFIED: Medicare.gov "Open Enrollment"
+//   https://www.medicare.gov/health-drug-plans/open-enrollment
+//   (CMS Medicare Open Enrollment partner resources; 42 CFR 422.62(a)(5) / 423.38(b) — the AEP.)
+// Re-verify each plan year before the season flips.
+const ENROLLMENT = {
+  aep: { startMonth: 10, startDay: 15, endMonth: 12, endDay: 7, effective: 'January 1' },
+};
+
+// The comparison ("is today inside that window?") lives in PRFormat.inAep, which takes this window as
+// DATA — the window is the parameter and has one home; the arithmetic has one implementation. Served
+// to the browser on /api/meta, never re-typed into copy.
+
 function paramsForYear(planYear) {
   const y = String(planYear);
   const p = PLAN_YEAR_PARAMS[y];
@@ -46,4 +62,4 @@ function paramsForYear(planYear) {
   return p;
 }
 
-module.exports = { PLAN_YEAR_PARAMS, VACCINE_RULE, paramsForYear };
+module.exports = { PLAN_YEAR_PARAMS, VACCINE_RULE, paramsForYear, ENROLLMENT };

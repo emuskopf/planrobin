@@ -117,4 +117,186 @@ t('filename is planrobin-comparison-YYYY-MM-DD.pdf', () => {
   assert.ok(/^planrobin-comparison-\d{4}-\d{2}-\d{2}\.pdf$/.test(m.filename), m.filename);
 });
 
+// ---- THE CHECKUP SHEET -------------------------------------------------------------------------
+// The printed action plan IS the product's thesis, so this model gets the same discipline as the
+// comparison's: deterministic, complete, and worded by the shared builders (never re-authored here).
+const twoRoads = require('./ux/fixtures/results-two-roads.json');
+const CK = { planId: 'H2041-001', planIdSource: 'typed', fill: { where: 'local', days: '1' }, perks: 'unsure', shareUrl: 'https://planrobin.com/checkup.html#abc' };
+const NOW = new Date('2026-07-16T12:00:00Z');   // pinned: `now` is an input, never read from the clock
+const ckModel = (o) => P.checkupModel(twoRoads, drugs, Object.assign({}, CK, { now: NOW }, o));
+
+console.log('\nCheckup sheet — her plan, and what to do about it:');
+
+t('no plan → no sheet (the screen shows the picker; a sheet about nobody’s plan is worse than none)', () => {
+  assert.strictEqual(P.checkupModel(twoRoads, drugs, { now: NOW }), null);
+  assert.strictEqual(ckModel({ planId: 'H7777-777' }), null);   // a real-looking ID that isn't here
+});
+
+t('model is deterministic (same inputs → same items, whoever renders them)', () => {
+  assert.deepStrictEqual(P.passportStrings(ckModel()), P.passportStrings(ckModel()));
+});
+
+t('page 1: her plan, premium on its own line + qualified, basis on every price', () => {
+  const m = ckModel();
+  const s = P.passportStrings(m);
+  const plan = m.items.find((i) => i.type === 'plan');
+  // premium prominent AND still honestly labelled (MA-PD → the drug-coverage portion)
+  assert.ok(/^\$[\d.]+\/mo drug coverage premium$/.test(plan.premium), plan.premium);
+  // ...and therefore NOT repeated in the meta sub-line
+  assert.ok(!/premium/.test(plan.sub), 'premium is not printed twice: ' + plan.sub);
+  // parity order: name, total, premium, sub
+  const i = s.indexOf(plan.total);
+  assert.deepStrictEqual(s.slice(i - 1, i + 3), [plan.name, plan.total, plan.premium, plan.sub]);
+  // a price never ships without its basis
+  const B = require('../site/format.js').HEADLINE_BASIS;
+  for (const cell of plan.drugs.map((r) => r[2]).filter((c) => /^\$/.test(c))) assert.ok(cell.includes(B.perLabel), cell);
+});
+
+t('the headline mirrors how she told us: typed = "Your plan", picked = "The plan you selected"', () => {
+  assert.ok(P.passportStrings(ckModel({ planIdSource: 'typed' })).includes('Your plan'));
+  assert.ok(P.passportStrings(ckModel({ planIdSource: 'picked' })).includes('The plan you selected'));
+  // default (the comparison sheet's only path in) stays the confident one
+  assert.ok(P.passportStrings(ckModel({ planIdSource: null })).includes('Your plan'));
+});
+
+t('the action plan prints the words to say — a recommendation without its action is incomplete', () => {
+  const s = P.passportStrings(ckModel());
+  const C = P.checkupCopy;
+  const hasMove = s.some((x) => /saving about \$/.test(x));
+  if (hasMove) {
+    assert.ok(s.includes(C.howHead), 'the how-to lead-in');
+    assert.ok(s.includes(C.script), 'the mail-order script, verbatim');
+    assert.ok(s.includes(C.reassure), 'and that it is reversible');
+  } else {
+    assert.ok(s.includes(C.doNothing), 'or the do-nothing verdict is printed as an answer');
+  }
+  // the baseline assumption that could make a saving too big is ALWAYS printed
+  assert.ok(s.some((x) => /^Measured against 30-day fills at a local pharmacy at a standard/.test(x)), 'baseline honesty: ' + s.join(' | '));
+});
+
+t('screen and sheet cannot word it differently — both render from checkupCopy', () => {
+  // This is the parity that matters for the checkup: the sentences are not authored twice. If a
+  // future session edits the verdict on screen, it edits this string, and the sheet changes with it.
+  const C = P.checkupCopy;
+  assert.strictEqual(typeof C.doNothing, 'string');
+  assert.strictEqual(typeof C.script, 'string');
+  assert.strictEqual(typeof C.baseline, 'function');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../site/checkup.js'), 'utf8');
+  // checkup.js renders prose ONLY through the shared builders. If you're adding a sentence to the
+  // screen, add it to checkupCopy — otherwise the printed sheet silently disagrees with the page.
+  for (const sentence of [C.doNothing, C.script, C.reassure, C.fairStayPut, C.perksLead]) {
+    assert.ok(!src.includes(sentence.slice(0, 40)), 'checkup.js must not re-author: ' + sentence.slice(0, 40));
+  }
+});
+
+t('fair-price fires on paper exactly when it fires on screen — and stays silent otherwise', () => {
+  const F = require('../site/format.js');
+  const m = ckModel();
+  const group = F.groupPlans(twoRoads.plans, { road: null, planId: CK.planId });
+  const fp = F.fairPriceCheck(group);
+  const printed = P.passportStrings(m).some((x) => x === P.checkupCopy.fairHeading);
+  assert.strictEqual(printed, fp.fires, `sheet ${printed ? 'prints' : 'omits'} but engine says ${fp.fires}`);
+});
+
+t('perks print only when she said she doesn’t know (and never enumerate a perk we don’t have)', () => {
+  const C = P.checkupCopy;
+  assert.ok(P.passportStrings(ckModel({ perks: 'unsure' })).includes(C.perksHeading));
+  assert.ok(P.passportStrings(ckModel({ perks: 'no' })).includes(C.perksHeading));
+  assert.ok(!P.passportStrings(ckModel({ perks: 'yes' })).includes(C.perksHeading));
+  assert.ok(!P.passportStrings(ckModel({ perks: null })).includes(C.perksHeading));
+  // it points at where the real answer lives; it never claims to know her benefits
+  const s = P.passportStrings(ckModel({ perks: 'unsure' }));
+  assert.ok(s.some((x) => /We don’t have benefits data, so we won’t guess at yours/.test(x)), 'says plainly that we do not know');
+  assert.ok(s.some((x) => /Annual Notice of Change/.test(x)), 'and points at the document that does');
+});
+
+t('the season line is computed from the window on HER clock, never baked in', () => {
+  const meta = { enrollment: { aep: { startMonth: 10, startDay: 15, endMonth: 12, endDay: 7, effective: 'January 1' } } };
+  const inAep = P.passportStrings(ckModel({ meta, now: new Date('2026-11-01T12:00:00Z') }));
+  const outside = P.passportStrings(ckModel({ meta, now: new Date('2026-07-16T12:00:00Z') }));
+  // the compare sentence — NOT the share URL on page 2, which also contains "planrobin.com"
+  const line = (s) => s.find((x) => /^If you’d like to compare, the full list/.test(x)) || '';
+  // only assert when the fair-price section actually fires for this fixture
+  if (line(inAep)) {
+    assert.ok(/switching is open until December 7/.test(line(inAep)), line(inAep));
+    assert.ok(/plan switching opens October 15/.test(line(outside)), line(outside));
+  }
+  // with no window on meta we never guess a date
+  const none = line(P.passportStrings(ckModel({ meta: null })));
+  if (none) assert.ok(!/October|December/.test(none), none);
+});
+
+t('page 2 is the reopen page, and the caveats key off what is ACTUALLY printed', () => {
+  const s = P.passportStrings(ckModel());
+  assert.ok(s.includes('Reopen this checkup'), 'the reopen page, named for this sheet');
+  assert.ok(s.some((x) => /Use your phone’s camera/.test(x)), 'camera path');
+  assert.ok(s.includes(CK.shareUrl), 'the share URL');
+  assert.ok(s.some((x) => /1-800-MEDICARE/.test(x)), 'confirm-it caveat');
+  // ONE plan on this sheet → never the two-roads caveat (there is nothing to confuse it with)
+  assert.ok(!s.some((x) => /not interchangeable/.test(x)), 'no two-roads caveat on a one-plan sheet');
+  // her plan is MA-PD → the premium caveat IS carried
+  assert.ok(s.some((x) => /separate medical premium not shown here/.test(x)), 'MA-PD premium caveat');
+});
+
+// REGRESSION (found while building the sheet, 2026-07-16). Her plan covered NOTHING she takes and the
+// checkup answered "Good news — the way you're filling now is already the cheapest option on your
+// plan. We checked." Two independent faults, both now pinned:
+//   1. actionPlan `continue`d past not-covered drugs, so "no moves" read as "all is well".
+//   2. fairPriceCheck's no-alternatives early-return preempted its own documented "not-covered ALWAYS
+//      fires" rule, so the section that WOULD have told her never rendered.
+// The result was a warm, confident, false verdict on the exact case that matters most.
+t('REGRESSION: a plan covering nothing she takes never gets the good-news verdict', () => {
+  const zero = require('./ux/fixtures/results-zero.json');
+  const m = P.checkupModel(zero, drugs, Object.assign({}, CK, { now: NOW }));
+  const s = P.passportStrings(m);
+  assert.ok(!s.includes(P.checkupCopy.doNothing), 'NEVER "already the cheapest option" when a drug isn’t covered');
+  // it names them, and points at the section that deals with it
+  const warn = s.find((x) => /aren’t covered by your plan/.test(x));
+  assert.ok(warn, 'names the uncovered drugs in the action section: ' + s.join(' | '));
+  assert.ok(/see “Worth knowing” below/.test(warn), warn);
+  assert.ok(s.includes(P.checkupCopy.fairHeading), 'and "Worth knowing" actually renders');
+  // nothing was measured → no baseline note explaining a measurement that didn't happen
+  assert.ok(!s.some((x) => /^Measured against/.test(x)), 'no baseline note when nothing was measured');
+});
+
+t('REGRESSION: not-covered fires even when NO other plan covers everything either', () => {
+  const F = require('../site/format.js');
+  const zero = require('./ux/fixtures/results-zero.json');
+  const group = F.groupPlans(zero.plans, { road: null, planId: CK.planId });
+  const fp = F.fairPriceCheck(group);
+  assert.strictEqual(fp.fires, true, 'a gap is worth knowing at any price, and with nowhere to go');
+  assert.strictEqual(fp.reason, 'not-covered');
+  assert.strictEqual(fp.n, 0, 'no alternative covers everything in this fixture');
+  // and the copy says that plainly instead of printing "0 other plans cover everything"
+  const line = P.checkupCopy.fairNotCoveredOthers(fp);
+  assert.ok(/^No other .*plan in your county covers everything on your list either/.test(line), line);
+  assert.ok(!/^0 other/.test(line), 'never "0 other plans"');
+  // with nowhere to switch, the next step is a person — not "staying put is a perfectly good choice"
+  const s = P.passportStrings(P.checkupModel(zero, drugs, Object.assign({}, CK, { now: NOW })));
+  assert.ok(!s.includes(P.checkupCopy.fairStayPut), 'no "staying put" advice when there is nowhere to go');
+  assert.ok(s.includes(P.checkupCopy.fairNoWhereToSwitch), 'points at the exception process + SHIP');
+});
+
+t('allClear is the verdict’s gate: earned only when every drug was actually checkable', () => {
+  const F = require('../site/format.js');
+  const mk = (drugsObj) => ({ planId: 'H1-001', segmentId: '000', planName: 'T', planType: 'MA-PD', premium: 0, deductible: 0, notCovered: 0, annualComplete: true, breakdown: {}, drugs: drugsObj });
+  const copayOnly = { phases: { '1': { byDaysSupply: { '1': { standardRetail: { kind: 'copay', dollars: 10 }, preferredMail: { kind: 'copay', dollars: 10 } } } } }, covered: true, tier: 1, flags: {}, headline: { kind: 'copay', dollars: 10 }, appliedOverrides: [] };
+  const list = [['9', { label: 'a' }]];
+  // nothing to move, everything checkable → the warm verdict is honest
+  assert.strictEqual(F.actionPlan(mk({ '9': copayOnly }), list, { where: 'local', days: '1' }).allClear, true);
+  // a drug the plan doesn't cover → NOT all clear, and it's reported rather than dropped
+  const withGap = F.actionPlan(mk({ '9': { covered: false } }), list, { where: 'local', days: '1' });
+  assert.strictEqual(withGap.allClear, false);
+  assert.strictEqual(withGap.nothingToDo, true, 'still nothing to MOVE — the two are different questions');
+  assert.deepStrictEqual(withGap.notCovered.map((x) => x.label), ['a']);
+  // a coinsurance drug we can't compare → also not all clear (we said so, we don't pretend we checked)
+  const coins = F.actionPlan(mk({ '9': { covered: true, tier: 4, flags: {}, headline: { kind: 'coinsurance', display: '25%' }, phases: {}, appliedOverrides: [] } }), list, { where: 'local', days: '1' });
+  assert.strictEqual(coins.allClear, false);
+  assert.strictEqual(coins.cant.length, 1);
+});
+
+t('filename is planrobin-checkup-YYYY-MM-DD.pdf (its own artifact, not the comparison’s)', () => {
+  assert.ok(/^planrobin-checkup-\d{4}-\d{2}-\d{2}\.pdf$/.test(ckModel().filename), ckModel().filename);
+});
+
 console.log(`\nALL PASSPORT MODEL TESTS PASSED (${passed}).`);

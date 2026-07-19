@@ -22,7 +22,8 @@ const LAW_BADGE = { insulin_cap_35: 'capped by federal law', acip_vaccine_free: 
 
 // `road` is what the reader told us (or what their plan ID implies): 'ma' | 'original' | 'new' |
 // 'unsure' | null. It only ever GROUPS results — it never filters them. Both roads always render.
-const state = { county: '', countySource: null /* 'zip' | 'county' | 'link' */, drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false, road: null };
+const state = { county: '', countySource: null /* 'zip' | 'county' | 'link' */, drugs: new Map() /* rxcui -> {label, kind, qty} */, lastData: null, restoredFromLink: false, road: null,
+  planId: null, planIdSource: null /* 'typed' (read off her card) | 'picked' (chosen from the list) */ };
 const PHASES = [['0', 'Pre-deductible'], ['1', 'Initial coverage'], ['3', 'Catastrophic']];
 const DAYS = [['1', '30-day'], ['2', '90-day']];
 
@@ -68,6 +69,12 @@ async function getJSON(url, opts) {
   return r.json();
 }
 
+// Which front door is this? 'compare' (index.html) or 'checkup' (checkup.html). The intake — ZIP,
+// county fallback, medications, the road question, wallet check, plan-ID field — is IDENTICAL on both
+// and is wired ONCE, here. Only what the button DOES differs, so the checkup binds its own runner
+// (checkup.js) and this file leaves #go alone there. One intake, two doors — never a clone.
+const PAGE = (document.body && document.body.dataset && document.body.dataset.page) || 'compare';
+
 // ---------- init ----------
 async function init() {
   try {
@@ -93,13 +100,16 @@ async function init() {
   wireZip();
   wireAutocomplete();
   wireRoad();
-  $('#go').addEventListener('click', runResults);
+  if (PAGE === 'compare') $('#go').addEventListener('click', runResults);   // checkup.js binds its own
 
   // Ctrl/⌘-P and the "Print this comparison" button both build the Plan Passport just before print.
   window.addEventListener('beforeprint', () => {
     if (!state.lastData) return;
+    // null when the checkup doesn't know which plan is hers — print the page, not a sheet about nobody
+    // (and never `append(null)`, which would quietly print the word "null").
+    const doc = buildPassport(state.lastData); if (!doc) return;
     const host = ensurePassportHost();
-    host.innerHTML = ''; host.append(buildPassport(state.lastData));
+    host.innerHTML = ''; host.append(doc);
     document.body.classList.add('printing-passport');
   });
   window.addEventListener('afterprint', () => { document.body.classList.remove('printing-passport'); });
@@ -172,10 +182,13 @@ function wireRoad() {
     const raw = idInput.value;
     const v = PRFormat.normalizePlanId(raw);
     let hint = '';
-    if (!v) state.planId = null;
-    else if (PRFormat.isPlanIdShape(v)) state.planId = v;
+    // Typed off the card: the strongest claim she can make about which plan is hers. Recorded so the
+    // checkup's headline can mirror her confidence (see PRFormat.yoursLabel).
+    if (!v) { state.planId = null; state.planIdSource = null; }
+    else if (PRFormat.isPlanIdShape(v)) { state.planId = v; state.planIdSource = 'typed'; }
     else {
       state.planId = null;
+      state.planIdSource = null;
       // Incremental + friendly: stay quiet while it could still become a valid ID; only speak up once
       // it can't. Spaces and case are already forgiven by normalizePlanId.
       if (!PRFormat.isPlanIdPrefix(v)) hint = 'Plan IDs look like H1234-001: a letter, four digits, a dash, three digits.';
@@ -668,12 +681,25 @@ function renderPlan(p, opts) {
     ]),
     annual,
   ]);
-  const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') + (opts.yours ? ' plan-yours' : '') }, [head]);
-  // "Your plan" — semantic (icon + word + color), sentence case, never a shout.
+  // `plan-nocover` is set from the ONE shared coverage definition (not a local re-derivation), and it
+  // is what lets the stylesheet put the badge above the money in the visual hierarchy: on a plan that
+  // covers nothing she takes, "$0.00/mo" must not out-shout "Doesn't cover any of your medications".
+  const card = el('div', { className: 'plan' + (cov.complete ? '' : ' plan-partial') + (cov.covered === 0 ? ' plan-nocover' : '') + (opts.yours ? ' plan-yours' : '') }, [head]);
+  // "Your plan" — semantic (icon + word + color), sentence case, never a shout. The word mirrors how
+  // she told us it was hers (typed the ID vs picked it from a list); the treatment never changes.
   if (opts.yours) {
     const badge = el('div', { className: 'yours-badge' });
-    badge.append(ic('save'), el('span', { textContent: 'Your plan' }));
+    badge.append(ic('save'), el('span', { textContent: opts.yoursLabel || PRFormat.yoursLabel() }));
     card.insertBefore(badge, head);
+  }
+  // The checkup gives the premium its own line: the first thing a real reader asked out loud was
+  // "how much are these per month?" — it shouldn't be buried in a meta sub-line. Same label rule as
+  // everywhere else (an MA-PD figure is the drug-coverage portion, not the whole premium).
+  if (opts.premiumProminent) {
+    card.append(el('div', { className: 'premium-prominent' }, [
+      el('span', { className: 'pp-amt', textContent: `${money(p.premium || 0)}/mo` }),
+      el('span', { className: 'pp-lbl term', title: TERMS.premium, textContent: PRFormat.premiumLabel(p.planType) }),
+    ]));
   }
   // Loud partial-coverage flag — names the missing drug(s). Only for plans covering SOME of your
   // drugs; a zero-coverage plan already says so in its anchor (and every drug row below is "not covered").
@@ -698,6 +724,9 @@ function renderPlan(p, opts) {
 // would be decision friction on the single most valuable card. Every other card stays one tap away.
 function renderBreakdown(p, opts) {
   const b = p.breakdown || {};
+  // ONE coverage definition (shared with the card anchor, the sort and the passport) decides which
+  // conditional notes have earned the right to speak here.
+  const cov = PRFormat.planCoverage(p);
   const wrap = el('details', { className: 'breakdown', open: !!(opts && opts.yours) });
   wrap.append(el('summary', { textContent: 'See what’s included in this total' }));
   const rows = el('div', { className: 'bd-rows' });
@@ -736,35 +765,48 @@ function renderBreakdown(p, opts) {
     rows.append(r);
   }
 
-  // Not on the formulary — loud, by name, "you'd pay full price", never a fake $0.
+  // Not on the formulary — the SAME semantic badge the card and the drug rows use (icon + words +
+  // the not-covered token), inline, not plain grey text. No dollar figure renders anywhere on this
+  // line: there is no price to state, and a "$" here is the fake-$0 in breakdown clothing.
   for (const rxcui of (b.notCoveredRxcuis || [])) {
     const meta = state.drugs.get(rxcui) || { label: rxcui };
     const r = el('div', { className: 'bd-line bd-notcov' });
-    const lab = el('span', { className: 'bd-label' }); lab.append(ic('cross'), el('strong', { textContent: ' ' + meta.label }));
-    r.append(lab);
-    r.append(el('span', { className: 'bd-note', textContent: 'Not on this plan’s formulary — you’d pay full price. Not included in the total.' }));
+    r.append(el('span', { className: 'bd-label' }, [el('strong', { textContent: meta.label })]));
+    const badge = el('span', { className: 'status notcov bd-notcov-badge' });
+    badge.append(ic('cross'), document.createTextNode(' Not covered — you’d pay full price'));
+    r.append(badge);
+    r.append(el('span', { className: 'bd-note', textContent: 'Not on this plan’s formulary, so it isn’t included below.' }));
     rows.append(r);
   }
 
-  // Deductible exemption — the plan has a deductible, but the user's drugs are on tiers it skips.
-  if (b.deductibleExempt) {
-    const ded = '$' + Number(b.deductibleAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  // Deductible exemption — reassurance has to be EARNED (UX-REVIEW #13). The shared predicate
+  // suppresses it when nothing she takes is covered, and scopes the sentence when only some is.
+  const dedNote = PRFormat.deductibleExemptNote(p);
+  if (dedNote) {
     rows.append(el('div', { className: 'bd-line bd-ded' }, [
-      el('span', { className: 'bd-note', textContent: `This plan's ${ded} deductible doesn't apply to your medications — they're on tiers the deductible skips.` }),
+      el('span', { className: 'bd-note', textContent: dedNote.text }),
     ]));
   }
 
-  // Cap milestone, where it binds.
-  if (b.capHit && b.capHit.reached && b.capHit.month) {
+  // Cap milestone, where it binds. Guarded on real coverage for the same reason: a cap you'd reach
+  // in March is a statement about spending on drugs this plan actually pays for.
+  if (cov.covered > 0 && b.capHit && b.capHit.reached && b.capHit.month) {
     rows.append(el('div', { className: 'bd-line bd-cap' }, [
       el('span', { className: 'bd-note', textContent: `You’d reach your ${PRFormat.dollars(b.oopCap)} yearly out-of-pocket cap around ${MONTHS[b.capHit.month]}; covered drugs are $0 after that${b.capBinds ? ', so the total below is less than the lines above add up to' : ''}.` }),
     ]));
   }
 
-  rows.append(line('Estimated total', PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr', 'bd-total'));
-  if (b.hasUnpriceable) {
-    rows.append(el('p', { className: 'bd-incomplete', textContent:
-      'One or more of your drugs couldn’t be included (no published price) — your true yearly cost is higher.' }));
+  // A yearly total for a plan that covers NOTHING she takes would be the premium alone — a real
+  // number answering a question nobody asked, sitting where the answer goes. The card's anchor
+  // already says the true thing ("Doesn't cover any of your medications"); the breakdown's last word
+  // is the not-covered rows above. (Premium keeps its own true $0 line: that one is a fact about the
+  // plan, not a verdict about her.)
+  if (cov.covered > 0) {
+    rows.append(line('Estimated total', PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr', 'bd-total'));
+    if (b.hasUnpriceable) {
+      rows.append(el('p', { className: 'bd-incomplete', textContent:
+        'One or more of your drugs couldn’t be included (no published price) — your true yearly cost is higher.' }));
+    }
   }
   wrap.append(rows);
   return wrap;
@@ -776,6 +818,11 @@ function renderBreakdown(p, opts) {
 function renderSavings(p) {
   const s = p.savings;
   if (!s) return null;
+  // Same guard as the deductible note (UX-REVIEW #13). The API suppresses savings on partial and
+  // zero coverage today, so this is belt-and-braces — but "save $240 a year at preferred pharmacies"
+  // on a plan that covers none of her drugs would be the loudest false all-clear on the page, and
+  // that must not depend on the payload staying well-behaved.
+  if (PRFormat.planCoverage(p).covered === 0) return null;
   const LOC = {
     preferredRetail: "this plan's preferred pharmacies",
     standardMail: "this plan's mail-order pharmacy",
@@ -857,16 +904,22 @@ function loadPdfLib() {
   return _pdfLibPromise;
 }
 
+// Each door prints its own sheet — one noun, used for the bar's heading, the file, and the share sheet.
+const SHEET = PAGE === 'checkup'
+  ? { noun: 'checkup', shareTitle: 'PlanRobin Medicare checkup', shareText: 'My Medicare drug plan checkup from PlanRobin.' }
+  : { noun: 'comparison', shareTitle: 'PlanRobin drug plan comparison', shareText: 'My Medicare drug plan comparison from PlanRobin.' };
+
 async function runPdf(btn, mode) {
   const data = state.lastData; if (!data) return;
   const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…';
   try {
     await loadPdfLib();
-    const { blob, filename } = await renderPassportPdf(passportModelNow(data));
+    const model = passportModelNow(data); if (!model) return;   // checkup with no plan → nothing to print
+    const { blob, filename } = await renderPassportPdf(model);
     if (mode === 'share') {
       const file = new File([blob], filename, { type: 'application/pdf' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: 'PlanRobin drug plan comparison', text: 'My Medicare drug plan comparison from PlanRobin.' }); } catch (_) { /* user cancelled */ }
+        try { await navigator.share({ files: [file], title: SHEET.shareTitle, text: SHEET.shareText }); } catch (_) { /* user cancelled */ }
         return;
       }
     }
@@ -882,7 +935,8 @@ async function runPdf(btn, mode) {
 // Chrome fires `beforeprint` unreliably — see the mobile-print fix). Desktop path.
 function printPassport() {
   const data = state.lastData; if (!data) return;
-  const host = ensurePassportHost(); host.innerHTML = ''; host.append(buildPassport(data));
+  const doc = buildPassport(data); if (!doc) return;
+  const host = ensurePassportHost(); host.innerHTML = ''; host.append(doc);
   document.body.classList.add('printing-passport');
   window.print();
   setTimeout(() => document.body.classList.remove('printing-passport'), 1000); // belt-and-suspenders vs missing afterprint
@@ -890,7 +944,7 @@ function printPassport() {
 
 function renderShareBar(data) {
   const bar = el('div', { className: 'share-bar' });
-  bar.append(el('h3', { className: 'share-h', textContent: 'Save or share this comparison' }));
+  bar.append(el('h3', { className: 'share-h', textContent: `Save or share this ${SHEET.noun}` }));
   bar.append(el('p', { className: 'share-lead', textContent: 'Save it, print it anywhere, or send it to someone helping you.' }));
   const actions = el('div', { className: 'share-actions' });
 
@@ -954,10 +1008,23 @@ function buildQR(text) {
   } catch (_) { return null; } // the URL is printed as text regardless
 }
 
-// Build the shared model from current state (URL fragment kept fresh for the share link).
+// Build the shared model from current state (URL fragment kept fresh for the share link). THE seam
+// between the two doors: each page prints its own sheet, and everything downstream — Download PDF,
+// Print, the parity test — goes through here, so neither can drift onto the other's model.
+// Returns null when the checkup doesn't know which plan is hers (the screen shows the picker instead).
 function passportModelNow(data) {
   updateFragment();
-  return PRPassport.passportModel(data, [...state.drugs], { shareUrl: location.href });
+  const shareUrl = location.href;
+  if (PAGE === 'checkup') {
+    return PRPassport.checkupModel(data, [...state.drugs], {
+      shareUrl,
+      road: state.road, planId: state.planId, planIdSource: state.planIdSource,
+      fill: state.fill, perks: state.perks,
+      // The season verdict is computed on HER clock, from the window the engine carries on /api/meta.
+      meta: state.checkupMeta, now: new Date(),
+    });
+  }
+  return PRPassport.passportModel(data, [...state.drugs], { shareUrl });
 }
 
 // ---- DOM renderer: walks the shared model into the 2-page print passport (.pp-* classes) ----
@@ -967,6 +1034,8 @@ function planCardDom(it) {
     el('div', { className: 'pp-plan-name', textContent: it.name }),
     el('div', { className: 'pp-plan-total' + (it.noCover ? ' pp-no-cover' : ''), textContent: it.total }),
   ]));
+  // Order is the parity contract: name, total, [premium], sub — matches passportStrings + the PDF.
+  if (it.premium) card.append(el('div', { className: 'pp-plan-premium', textContent: it.premium }));
   card.append(el('div', { className: 'pp-plan-sub', textContent: it.sub }));
   if (it.partial) card.append(el('div', { className: 'pp-partial', textContent: it.partial }));
   if (it.savings) card.append(el('div', { className: 'pp-savings', textContent: it.savings }));
@@ -996,6 +1065,9 @@ function renderPassportDom(model) {
   const flushHead = () => { if (brand || asof) { const left = el('div', { className: 'pp-brandmark' }, [oneColorRobin(), el('div', { className: 'pp-brand', textContent: brand })]); page.insertBefore(el('div', { className: 'pp-head' }, [left, el('div', { className: 'pp-asof', textContent: asof })]), page.firstChild); brand = asof = ''; } };
   const inputs = () => { let d = page.querySelector('.pp-inputs'); if (!d) { d = el('div', { className: 'pp-inputs' }); page.append(d); } return d; };
   const listIn = (host, cls) => { let ul = host.querySelector('.' + cls); if (!ul) { ul = el('ul', { className: cls }); host.append(ul); } return ul; };
+  // Bullets can appear in more than one place on a sheet, so they attach to the list at the TAIL and
+  // start a fresh one otherwise — never reaching back into an earlier list and scrambling model order.
+  const listTail = (host, cls) => { const last = host.lastElementChild; if (last && last.classList.contains(cls)) return last; const ul = el('ul', { className: cls }); host.append(ul); return ul; };
 
   for (const it of model.items) {
     if (it.pageBreak) { flushHead(); page = el('section', { className: 'pp-page pp-break' }); doc.append(page); }
@@ -1007,18 +1079,33 @@ function renderPassportDom(model) {
     else if (it.type === 'coverage') page.append(el('div', { className: 'pp-coverage', textContent: it.text }));
     else if (it.type === 'h') page.append(el('h2', { className: 'pp-h', textContent: it.text }));
     else if (it.type === 'plan') page.append(planCardDom(it));
+    // ---- the checkup's page 1: a verdict, an instruction, the words to say, the small print ----
+    // Semantic state on paper is word + weight + color: the sentence itself carries the word, so a
+    // black-and-white photocopy of this sheet still says the same thing.
+    else if (it.type === 'verdict') page.append(el('div', { className: 'pp-verdict pp-verdict-' + (it.kind || 'good'), textContent: it.text }));
+    else if (it.type === 'bullet') listTail(page, 'pp-bullets').append(el('li', { className: 'pp-bullet', textContent: it.text }));
+    else if (it.type === 'strong') page.append(el('p', { className: 'pp-strong', textContent: it.text }));
+    else if (it.type === 'script') page.append(el('blockquote', { className: 'pp-script', textContent: it.text }));
+    else if (it.type === 'fine') page.append(el('p', { className: 'pp-fine', textContent: it.text }));
     else if (it.type === 'caveat') listIn(page, 'pp-caveats').append(el('li', { textContent: it.text }));
-    else if (it.type === 'h3') { const sh = el('div', { className: 'pp-share' }); sh.append(el('h3', { className: 'pp-h3', textContent: it.text })); const cols = el('div', { className: 'pp-share-cols' }); const left = el('div', {}); cols.append(left); sh.append(cols); page.append(sh); page._share = { cols, left }; }
-    else if (it.type === 'note') page._share.left.append(el('p', { className: 'pp-note', textContent: it.text }));
-    else if (it.type === 'path') page._share.left.append(el('div', { className: 'pp-path' }, [el('span', { className: 'pp-path-icon', 'aria-hidden': 'true', textContent: it.icon }), el('span', { className: 'pp-path-text', textContent: it.text })]));
-    else if (it.type === 'url') page._share.left.append(el('a', { className: 'pp-url', href: it.link || it.text, textContent: it.text }));
-    else if (it.type === 'qr') { const q = buildQR(it.url); if (q) page._share.cols.append(el('div', { className: 'pp-qr-wrap' }, [q])); }
+    // A plain sub-heading (the action plan's "Keep filling these…", "Send these 2 to mail order…").
+    else if (it.type === 'h3') page.append(el('h3', { className: 'pp-h3', textContent: it.text }));
+    // The reopen block: a heading that OPENS the two-column layout the QR sits in.
+    else if (it.type === 'reopen-h') { const sh = el('div', { className: 'pp-share' }); sh.append(el('h3', { className: 'pp-h3', textContent: it.text })); const cols = el('div', { className: 'pp-share-cols' }); const left = el('div', {}); cols.append(left); sh.append(cols); page.append(sh); page._share = { cols, left }; }
+    // Notes are the checkup's workhorse paragraph and appear on BOTH pages: inside the reopen block
+    // (the comparison's only use) and in the report body above it. So they land in the share column
+    // when one is open, and in the page otherwise — never assuming an h3 came first.
+    else if (it.type === 'note') (page._share ? page._share.left : page).append(el('p', { className: 'pp-note', textContent: it.text }));
+    // path/url/qr belong to the reopen block by construction; guarded so a model change can't crash print.
+    else if (it.type === 'path' && page._share) page._share.left.append(el('div', { className: 'pp-path' }, [el('span', { className: 'pp-path-icon', 'aria-hidden': 'true', textContent: it.icon }), el('span', { className: 'pp-path-text', textContent: it.text })]));
+    else if (it.type === 'url' && page._share) page._share.left.append(el('a', { className: 'pp-url', href: it.link || it.text, textContent: it.text }));
+    else if (it.type === 'qr' && page._share) { const q = buildQR(it.url); if (q) page._share.cols.append(el('div', { className: 'pp-qr-wrap' }, [q])); }
   }
   flushHead();
   return doc;
 }
 
-function buildPassport(data) { return renderPassportDom(passportModelNow(data)); }
+function buildPassport(data) { const m = passportModelNow(data); return m ? renderPassportDom(m) : null; }
 
 // ---- PDF renderer: same model → a text-based (selectable), self-hosted PDF. Records every string it
 // draws so a test can prove PDF text == print-DOM text == the model. ----
@@ -1120,14 +1207,22 @@ async function renderPassportPdf(model) {
     else if (it.type === 'plan') {
       text(it.name, { bold: true, size: 12, gap: 1 });
       text(it.total, { bold: true, size: 12, color: it.noCover ? c.red : c.ink, gap: 1 });
+      // Same order as the model + the print DOM: name, total, [premium], sub.
+      if (it.premium) text(it.premium, { bold: true, size: 11, gap: 1 });
       text(it.sub, { size: 9, color: c.gray });
       if (it.partial) text(it.partial, { size: 9, color: c.red });
       if (it.savings) text(it.savings, { size: 9.5, color: c.green });
       for (const row of it.drugs) drugRow(row);
       rule();
     }
+    // ---- the checkup's page 1 (see the DOM renderer for the pairing) ----
+    else if (it.type === 'verdict') { y -= 2; text(it.text, { bold: true, size: 11, color: it.kind === 'warn' ? c.red : c.green }); }
+    else if (it.type === 'bullet') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
+    else if (it.type === 'strong') text(it.text, { bold: true, size: 10.5, gap: 1 });
+    else if (it.type === 'script') text(it.text, { size: 10, indent: 16, color: c.gray });
+    else if (it.type === 'fine') text(it.text, { size: 9, color: c.gray });
     else if (it.type === 'caveat') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
-    else if (it.type === 'h3') { y -= 4; text(it.text, { serif: true, size: 12 }); }
+    else if (it.type === 'h3' || it.type === 'reopen-h') { y -= 4; text(it.text, { serif: true, size: 12 }); }
     else if (it.type === 'note') text(it.text, { size: 9.5 });
     else if (it.type === 'path') { y -= 1; text(it.text, { size: 10, indent: 16, prefix: '•  ' }); } // icon is decorative → a plain marker in the PDF
     else if (it.type === 'url') linkText(it.text, it.link || it.text);

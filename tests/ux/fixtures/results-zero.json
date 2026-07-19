@@ -787,7 +787,7 @@
     },
     "oopCap": 2100,
     "deductibleAmount": 385,
-    "deductibleExempt": true
+    "deductibleExempt": false
    }
   },
   {
@@ -1427,7 +1427,7 @@
     },
     "oopCap": 2100,
     "deductibleAmount": 615,
-    "deductibleExempt": true
+    "deductibleExempt": false
    }
   },
   {
@@ -2191,7 +2191,7 @@
     },
     "oopCap": 2100,
     "deductibleAmount": 615,
-    "deductibleExempt": true
+    "deductibleExempt": false
    }
   },
   {
@@ -2955,7 +2955,7 @@
     },
     "oopCap": 2100,
     "deductibleAmount": 615,
-    "deductibleExempt": true
+    "deductibleExempt": false
    }
   },
   {
@@ -5468,7 +5468,7 @@
     },
     "oopCap": 2100,
     "deductibleAmount": 250,
-    "deductibleExempt": true
+    "deductibleExempt": false
    }
   }
  ]

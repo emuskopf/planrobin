@@ -266,6 +266,56 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
 .plan-type-link { color: var(--ink); text-decoration-style: dotted; text-underline-offset: 3px; }
 .plan-type-link:hover { color: var(--accent); }
 
+/* ---------- the 5-Minute Checkup ---------- */
+.field-label { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--ink); margin: var(--sp-4) 0 var(--sp-2); }
+/* the premium, given the prominence a real reader asked for out loud */
+.premium-prominent { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap;
+  margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.pp-amt { font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-lg); color: var(--ink); }
+.pp-lbl { font-size: var(--fs-sm); color: var(--ink-2); }
+/* the plan picker — the list we already priced, not a new question */
+.picker-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.picker-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.picker-sub { font-weight: 400; }
+/* the action plan */
+.action-item { padding: var(--sp-4) 0; border-top: 1px solid var(--line); }
+.action-item:first-of-type { border-top: 0; padding-top: 0; }
+.action-head { font-size: var(--fs-md); color: var(--ink); margin: 0 0 var(--sp-2); }
+.action-drugs { margin: 0 0 var(--sp-3); padding-left: var(--sp-4); font-size: var(--fs-sm); }
+.action-drugs li { margin: var(--sp-2) 0; }
+.action-how-head { font-size: var(--fs-sm); font-weight: 600; margin: var(--sp-3) 0 var(--sp-2); }
+.action-script { margin: 0 0 var(--sp-3); padding: var(--sp-3) var(--sp-4); background: var(--surface-2);
+  border-left: 4px solid var(--brand-sage); border-radius: var(--radius-sm); font-size: var(--fs-sm); color: var(--ink); }
+.action-reassure { font-size: var(--fs-sm); color: var(--ink-2); margin: 0; }
+.action-good { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-base);
+  color: var(--ink); padding: var(--sp-3) var(--sp-4); background: var(--good-tint);
+  border: 1px solid var(--good); border-radius: var(--radius); }
+.action-good .ic { flex: none; color: var(--good); margin-top: 2px; }
+/* A gap her plan won't pay for. Same shape as the good verdict, opposite semantic — icon + word +
+   color, never colour alone. It sits ABOVE any pharmacy verdict, because it outranks one. */
+.action-warn { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-base);
+  color: var(--ink); padding: var(--sp-3) var(--sp-4); background: var(--notcov-tint);
+  border: 1px solid var(--notcov); border-radius: var(--radius); margin-bottom: var(--sp-3); }
+.action-warn .ic { flex: none; color: var(--notcov); margin-top: 2px; }
+.action-baseline { margin: var(--sp-3) 0 0; }
+/* the fair-price check — disclosure, never alarm: amber, not red; calm, not loud */
+.fair-price { border-left: 4px solid var(--caution); }
+.fp-lead { display: flex; gap: var(--sp-2); align-items: flex-start; font-weight: 600; margin-bottom: var(--sp-3); }
+.fp-lead .ic { flex: none; color: var(--notcov); margin-top: 2px; }
+.fp-lead-text { font-weight: 600; }
+.perks-script { margin: 0; padding-left: var(--sp-4); }
+.perks-script li { margin: var(--sp-2) 0; }
+.bridge { background: var(--surface-2); }
+.bridge-ask { margin-bottom: 0; }
+/* the homepage's second front door */
+.doors { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); margin: var(--sp-5) 0 0; }
+.door { display: block; padding: var(--sp-4); background: var(--surface); border: 1.5px solid var(--line-2);
+  border-radius: var(--radius-lg); text-decoration: none; color: var(--ink); }
+.door:hover { border-color: var(--accent); background: var(--accent-tint); color: var(--ink); }
+.door-title { display: block; font-family: var(--font-serif); font-weight: 600; font-size: var(--fs-md); color: var(--brand-navy); }
+.door-sub { display: block; font-size: var(--fs-sm); color: var(--ink-2); margin-top: 4px; }
+@media (min-width: 720px) { .doors { grid-template-columns: 1fr 1fr; } }
+
 /* privacy reassurance sits AT the medication input */
 .privacy-note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: var(--sp-3) 0 var(--sp-4);
   padding: var(--sp-3) var(--sp-4); background: var(--accent-tint); border-radius: var(--radius); font-size: var(--fs-sm); color: var(--ink); }
@@ -361,10 +411,19 @@ button.primary:disabled { background: #b7c0c4; color: #eef1f2; cursor: not-allow
 .no-complete-note .ic { color: var(--notcov); flex: none; margin-top: 2px; }
 .plan.plan-partial { border-left: 4px solid var(--notcov); }
 .annual .num.partial { color: var(--ink-2); }
-/* zero-coverage: no dollar anchor — the not-covered badge treatment (icon + words, sentence case) */
-.no-cover-anchor { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end;
-  color: var(--notcov); font-weight: 700; font-size: var(--fs-sm); max-width: 22ch; text-align: right; }
-.no-cover-anchor .ic { flex: none; }
+/* zero-coverage: no dollar anchor — the not-covered badge treatment (icon + words, sentence case).
+   The badge REPLACES the yearly number, so it inherits the anchor's job of being the first thing the
+   eye lands on. It was --fs-sm (16px) while the checkup's premium sat at --fs-lg (28px), so on a plan
+   covering nothing the money out-shouted the fact — a #13 hierarchy inversion. Icon + word + colour
+   (never colour alone), sentence case, no caps. */
+.no-cover-anchor { display: inline-flex; align-items: flex-start; gap: 6px; justify-content: flex-end;
+  color: var(--notcov); font-weight: 700; font-size: var(--fs-md); line-height: var(--lh-tight);
+  max-width: 22ch; text-align: right; }
+.no-cover-anchor .ic { flex: none; margin-top: 3px; }
+/* …and on that card the premium demotes: still true, still shown, no longer the loudest thing on a
+   plan that can't fill her prescriptions. */
+.plan-nocover .premium-prominent .pp-amt { font-family: var(--font); font-size: var(--fs-base);
+  font-weight: 700; color: var(--ink-2); }
 .partial-flag { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3) var(--sp-5);
   border-top: 1px solid var(--line); background: #fbecec; font-size: var(--fs-sm); color: var(--ink); }
 .partial-flag .ic { color: var(--notcov); flex: none; margin-top: 2px; }
@@ -395,9 +454,13 @@ details.breakdown > summary { font-size: var(--fs-sm); }
 .bd-coins .bd-note { text-align: left; }
 .bd-coins-top { display: flex; justify-content: space-between; gap: var(--sp-4); align-items: baseline; }
 .bd-notcov { flex-direction: column; align-items: stretch; gap: 2px; }
-.bd-notcov .bd-label { display: inline-flex; align-items: center; gap: 6px; color: var(--notcov); font-weight: 700; }
+.bd-notcov .bd-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
 .bd-notcov .bd-note { text-align: left; }
 .bd-notcov .ic { color: var(--notcov); }
+/* The drug's row carries the SAME semantic badge as the card anchor and the drug rows — icon + words
+   + the not-covered token — rather than grey prose. No "$" is rendered anywhere on this line: there
+   is no price to state, and a dollar figure here would be the fake-$0 wearing breakdown clothes. */
+.bd-notcov-badge { align-self: flex-start; margin-top: 2px; font-size: var(--fs-sm); }
 .bd-cap .bd-note { text-align: left; color: var(--accent); }
 .bd-ded .bd-note { text-align: left; }
 .bd-total { border-top: 2px solid var(--line-2); margin-top: var(--sp-1); padding-top: var(--sp-3); }
@@ -582,6 +645,8 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-plan-name { font-weight: 700; font-size: 11pt; }
   .pp-plan-total { font-weight: 800; font-size: 13pt; white-space: nowrap; }
   .pp-plan-sub { font-size: 9pt; color: #333; margin: 1pt 0 3pt; }
+  /* the checkup gives the premium its own line — the question a real reader asked out loud first */
+  .pp-plan-premium { font-size: 11pt; font-weight: 700; margin: 2pt 0 1pt; }
   .pp-plan.pp-plan-partial { border-left: 3pt solid #b00020; }
   .pp-plan-total.pp-no-cover { font-size: 9.5pt; font-weight: 700; color: #b00020; }
   .pp-partial { font-size: 9pt; color: #b00020; font-weight: 600; margin: 2pt 0; }
@@ -592,6 +657,19 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-drugs td:nth-child(2) { width: 22%; }
   .pp-caveats { font-size: 10pt; padding-left: 16pt; }
   .pp-caveats li { margin: 3pt 0; }
+  /* ---- the checkup's page 1 ---- */
+  /* A verdict on paper: the WORD carries the meaning (the sentence says "Good news" / "doesn't
+     cover"), weight carries the emphasis, and color is the last layer — so a black-and-white
+     photocopy of this sheet loses nothing. */
+  .pp-verdict { font-size: 11pt; font-weight: 700; margin: 5pt 0 3pt; page-break-inside: avoid; }
+  .pp-verdict-good { color: #146c3a; }
+  .pp-verdict-warn { color: #b00020; }
+  .pp-bullets { font-size: 10pt; margin: 3pt 0; padding-left: 16pt; }
+  .pp-bullets li { margin: 2pt 0; }
+  .pp-strong { font-size: 10.5pt; font-weight: 700; margin: 6pt 0 2pt; }
+  /* the words to say, set apart as something to read aloud — not decoration */
+  .pp-script { font-size: 10pt; margin: 2pt 0 4pt; padding: 4pt 8pt; border-left: 2pt solid #999; color: #222; page-break-inside: avoid; }
+  .pp-fine { font-size: 9pt; color: #333; margin: 3pt 0; }
   .pp-share-cols { display: flex; gap: 16pt; align-items: flex-start; }
   .pp-url { display: inline-block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8pt; word-break: break-all; color: #0d4fa0; text-decoration: underline; background: #f4f4f4; padding: 4pt; border-radius: 3pt; }
   .pp-note { font-size: 9.5pt; }

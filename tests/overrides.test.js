@@ -19,6 +19,14 @@ t('2026 params verified: oopCap 2100, insulin 35', () => {
   assert.strictEqual(p.oopCapAnnual, 2100);
   assert.strictEqual(p.insulinMonthlyCap, 35);
 });
+t('AEP window is a verified parameter (Oct 15 – Dec 7); the comparison lives in PRFormat', () => {
+  const { ENROLLMENT } = require('../tools/overrides/statutory-params');
+  assert.deepStrictEqual(
+    [ENROLLMENT.aep.startMonth, ENROLLMENT.aep.startDay, ENROLLMENT.aep.endMonth, ENROLLMENT.aep.endDay],
+    [10, 15, 12, 7], 'Medicare Open Enrollment is October 15 – December 7 (Medicare.gov)');
+  assert.strictEqual(ENROLLMENT.aep.effective, 'January 1');
+});
+
 t('unknown plan year throws (no invented params)', () => {
   assert.throws(() => paramsForYear(2099));
 });

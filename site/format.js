@@ -49,6 +49,29 @@
     return { total: rxs.length, covered: rxs.length - missing.length, missing, complete: missing.length === 0 };
   }
 
+  // ---- Conditional notes must EARN their reassurance (UX-REVIEW #13: FALSE REASSURANCE) ----------
+  // A note that says something comforting about "your medications" is only true of the medications
+  // this plan actually covers. A drug that's on NO tier is not "on a tier the deductible skips" —
+  // saying so is vacuously true and reads as an all-clear. Two rules, both enforced HERE so screen,
+  // passport and any future consumer can't disagree:
+  //   • suppressed entirely unless at least one basket drug is genuinely covered;
+  //   • when coverage is PARTIAL, the sentence scopes itself to the drugs it's true of.
+  // The API guards the zero case too (`deductibleExempt`), but the client re-checks from the shared
+  // coverage definition: a payload is not allowed to be the only thing standing between a reader and
+  // a false all-clear. Returns null (render nothing) or the pieces the renderer needs.
+  function deductibleExemptNote(plan) {
+    const b = (plan && plan.breakdown) || {};
+    if (!b.deductibleExempt) return null;
+    const cov = planCoverage(plan);
+    if (cov.covered === 0) return null;            // nothing is on any tier — there is no good news here
+    const ded = '$' + Number(b.deductibleAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    const which = cov.complete ? 'your medications' : 'the medications it covers';
+    return {
+      amount: b.deductibleAmount || 0, complete: cov.complete,
+      text: `This plan's ${ded} deductible doesn't apply to ${which} — they're on tiers the deductible skips.`,
+    };
+  }
+
   // Ranking comparator: plans covering ALL basket drugs rank first (a partial plan can NEVER
   // outrank a complete one, regardless of price). Within the partial group, plans covering MORE of
   // your drugs rank higher — so a plan that's only "cheap" because it skips a drug can't float to
@@ -242,6 +265,146 @@
     return all.some((p) => roadOf(p.planType) === 'ma') && all.some((p) => roadOf(p.planType) === 'original');
   }
 
+  // ---- Season awareness --------------------------------------------------------------------------
+  // The AEP window is a verified statutory parameter (tools/overrides/statutory-params.js) served on
+  // /api/meta. We take it as DATA and do the comparison here, once — the window has one home, the
+  // arithmetic has one implementation, and no date is ever re-typed into copy.
+  // Calendar-naive (month/day) on purpose: that's how a person reads a date.
+  function inAep(aep, now) {
+    if (!aep) return null;                       // no window → we don't know; say nothing seasonal
+    const d = now || new Date();
+    const m = d.getMonth() + 1, day = d.getDate();
+    const afterStart = m > aep.startMonth || (m === aep.startMonth && day >= aep.startDay);
+    const beforeEnd = m < aep.endMonth || (m === aep.endMonth && day <= aep.endDay);
+    return afterStart && beforeEnd;
+  }
+  const MONTH_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthDay = (m, d) => `${MONTH_NAME[m - 1]} ${d}`;
+  // "switching is open until December 7" (inside AEP) / "plan switching opens October 15" (outside).
+  // Null when meta carries no window — we never guess a date.
+  function seasonLine(meta, now) {
+    const aep = meta && meta.enrollment && meta.enrollment.aep;
+    const open = inAep(aep, now);
+    if (open === null) return null;
+    return open
+      ? `switching is open until ${monthDay(aep.endMonth, aep.endDay)}`
+      : `plan switching opens ${monthDay(aep.startMonth, aep.startDay)}`;
+  }
+
+  // ---- The fair-price check ----------------------------------------------------------------------
+  // Deterministic disclosure, never a grade. Compares HER plan's basket against the plans on HER road
+  // that cover EVERY drug on her list (anything else isn't a fair compare). Rules:
+  //   • fires when at least one such plan is >= floor cheaper per year
+  //   • ALWAYS fires when her own plan misses one of her drugs — a gap is worth knowing at any price
+  //   • otherwise SILENCE: we disclose gaps, we don't rank loyalty ("your plan looks good" is a grade)
+  //
+  // FLOOR — $100/yr is an UNTUNED PLACEHOLDER. It has NOT been measured against real Missouri
+  // distributions; that tuning needs the live DB and lands with the counters work. The tests pin the
+  // BOUNDARY BEHAVIOUR, not this number, so re-tuning is a one-line data change.
+  const FAIR_PRICE_FLOOR_UNTUNED = 100;
+
+  function fairPriceCheck(group, opts) {
+    opts = opts || {};
+    const floor = opts.floor == null ? FAIR_PRICE_FLOOR_UNTUNED : opts.floor;
+    const you = group && group.yourPlan;
+    if (!you) return { fires: false, reason: 'no-plan', floor };
+    const yourCoverage = planCoverage(you);
+    const road = group.road;
+    // Same road + covers everything she takes.
+    const alts = (group.sameRoadOthers || []).filter((p) => planCoverage(p).complete);
+    const yourTotal = planDisplayTotal(you);
+    // Gaps are computed from the DISPLAYED totals (planDisplayTotal = the sum of rounded components,
+    // i.e. the number printed on each card), so "at least $Y" is always the figure she could work out
+    // herself from the two cards. Math.floor is a belt-and-braces guard: the claim can never exceed
+    // the gap on screen.
+    const deltas = alts.map((p) => yourTotal - planDisplayTotal(p));
+    const cheaper = deltas.filter((d) => d >= floor);
+    const atLeast = cheaper.length ? Math.floor(Math.min.apply(null, cheaper)) : null;
+
+    // Her plan doesn't cover everything she takes → she needs to know, whatever the money says AND
+    // whether or not anything better exists. This check comes FIRST, above the no-alternatives exit:
+    // "no plan in your county covers everything" is exactly the case where a silent report would be
+    // worst, and n === 0 is a fact the copy can state, not a reason to say nothing.
+    if (!yourCoverage.complete) {
+      return { fires: true, reason: 'not-covered', n: alts.length, atLeast, floor, road, yourCoverage };
+    }
+    if (!alts.length) return { fires: false, reason: 'no-alternatives', floor, road, yourCoverage };
+    if (!cheaper.length) return { fires: false, reason: 'below-floor', floor, road, yourCoverage };
+    return { fires: true, reason: 'cheaper', n: cheaper.length, atLeast, floor, road, yourCoverage };
+  }
+
+  // ---- The action plan ---------------------------------------------------------------------------
+  // Grouped by ACTION, not by drug — she does one thing (move these two to mail), not five separate
+  // errands. Every dollar is a published cell × the engine's fills-per-year; nothing is modelled.
+  // Only COPAY cells annualise honestly: a coinsurance drug needs a price AND her dose, so those are
+  // listed as "can't compare by pharmacy" rather than guessed (rule 6).
+  //
+  // BASELINE HONESTY: "a local pharmacy" is anchored to standardRetail — the same anchor the whole
+  // product ranks on. If her local pharmacy happens to be one of the plan's PREFERRED ones she may
+  // already pay less, which would make a claimed saving too big; the renderer must say so. We never
+  // silently assume the worse baseline to inflate a number.
+  const ACTION_FILLS = { '1': 12, '2': 4 };  // mirrors the engine's FILLS_PER_YEAR (pinned by test)
+  const MAIL_CHANNELS = ['preferredMail', 'standardMail'];
+  const ACTION_MIN_DEFAULT = 25;             // the engine's calm floor — don't cry opportunity over $3
+
+  function cellAt(phases, ds, chan) {
+    const lvl = phases && phases['1'] && phases['1'].byDaysSupply && phases['1'].byDaysSupply[ds];
+    return lvl ? lvl[chan] : null;
+  }
+  const annualOfCell = (cell, ds) => (cell && cell.kind === 'copay' && ACTION_FILLS[ds])
+    ? Number(cell.dollars) * ACTION_FILLS[ds] : null;
+
+  // baseline = { where: 'local'|'mail', days: '1'|'2' } (Q4). Defaults to the product's anchor:
+  // a 30-day fill at a standard pharmacy.
+  function actionPlan(plan, drugs, baseline, opts) {
+    const min = (opts && opts.min != null) ? opts.min : ACTION_MIN_DEFAULT;
+    const where = (baseline && baseline.where) || 'local';
+    const days = (baseline && baseline.days) || '1';
+    const baseChannel = where === 'mail' ? 'preferredMail' : 'standardRetail';
+    const moves = [], keep = [], cant = [], notCovered = [];
+    let saving = 0;
+    for (const entry of (drugs || [])) {
+      const rxcui = entry[0], meta = entry[1] || {};
+      const res = plan && plan.drugs && plan.drugs[rxcui];
+      // Not-covered drugs have no pharmacy price to improve, so they're not an ACTION — but they are
+      // REPORTED, never silently dropped. Skipping them quietly is what let "nothing to move" render
+      // as "Good news, you're already on the cheapest option" for a plan covering nothing she takes.
+      // The renderer owes her that word before any verdict about pharmacies.
+      if (!res || !res.covered) { notCovered.push({ rxcui: rxcui, label: meta.label }); continue; }
+      const current = annualOfCell(cellAt(res.phases, days, baseChannel), days);
+      if (current === null) { cant.push({ rxcui: rxcui, label: meta.label }); continue; }
+      // Mail's whole point is the 90-day discount, so search mail across BOTH days-supplies.
+      let best = null, bestDays = null, bestChannel = null;
+      for (const ds of ['1', '2']) {
+        for (const ch of MAIL_CHANNELS) {
+          const a = annualOfCell(cellAt(res.phases, ds, ch), ds);
+          if (a !== null && (best === null || a < best)) { best = a; bestDays = ds; bestChannel = ch; }
+        }
+      }
+      const delta = best === null ? null : current - best;
+      if (delta !== null && delta >= min) {
+        moves.push({ rxcui: rxcui, label: meta.label, current: current, to: best, saving: delta, days: bestDays, channel: bestChannel });
+        saving += delta;
+      } else {
+        keep.push({ rxcui: rxcui, label: meta.label, annual: current });
+      }
+    }
+    return {
+      moves: moves, keep: keep, cant: cant, notCovered: notCovered,
+      saving: round(saving),
+      // No pharmacy move to make. NOT the same as "all is well" — read it with `cant` and `notCovered`
+      // before speaking: the warm verdict is only honest when there's nothing else outstanding.
+      nothingToDo: moves.length === 0,
+      // The warm do-nothing verdict has EARNED its "we checked" only when every drug she takes was
+      // actually checkable: covered, priced as a copay, and already at its best channel.
+      allClear: moves.length === 0 && cant.length === 0 && notCovered.length === 0,
+      baseline: { where: where, days: days, channel: baseChannel },
+      // she told us she already fills at a standard local pharmacy → the baseline caveat applies
+      baselineAssumed: where === 'local',
+      min: min,
+    };
+  }
+
   // ---- Price basis (a price never ships without its basis) ---------------------------------------
   // The headline per-drug number's basis IS the basis the engine projects with: days-supply code '1'
   // = a 30-day fill, 12 fills a year, standard retail, initial coverage. The label and the
@@ -261,9 +424,17 @@
   // separate and not in this file), so we label it honestly. See planrobin-premium-semantics.
   function premiumLabel(planType) { return isMaPd(planType) ? 'drug coverage premium' : 'premium'; }
 
-  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel,
+  // She told us which plan is hers with two different levels of confidence: typing the ID off her card
+  // is a claim of ownership; picking a name out of a list is a selection. The card, the math and the
+  // honesty are identical either way — only the word changes, so the page never sounds more certain
+  // about her life than she was. Default is "Your plan" (on the comparison page, typing is the only way in).
+  const YOURS_LABEL = { typed: 'Your plan', picked: 'The plan you selected' };
+  function yoursLabel(source) { return YOURS_LABEL[source] || YOURS_LABEL.typed; }
+
+  const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel, yoursLabel, deductibleExemptNote,
     roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
-    normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual };
+    normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual,
+    inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED, actionPlan };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);

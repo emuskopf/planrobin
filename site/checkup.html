@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PlanRobin — check your Medicare drug plan, anonymously</title>
-  <meta name="description" content="See what your medications really cost on every Medicare drug plan in your county. Free, anonymous, no account. Cost estimates from public CMS data — a private site, not affiliated with the federal Medicare program." />
+  <title>The 5-Minute Medicare Checkup — PlanRobin</title>
+  <meta name="description" content="Already have a Medicare drug plan? Get the most out of the plan you already have. A free, five-minute check of what your medications cost on your own plan — from public CMS data. No account, nothing to sell." />
   <meta name="theme-color" content="#F7F4EC" />
   <link rel="icon" href="/icons/favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
@@ -14,7 +14,8 @@
   <link rel="preload" as="font" type="font/woff2" href="/fonts/source-serif-4-latin.woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css?v=36" />
 </head>
-<body>
+<!-- data-page tells app.js to wire the shared intake but leave the button to checkup.js. -->
+<body data-page="checkup">
   <header class="site-header">
     <div class="wrap">
       <a class="brand" href="/" aria-label="PlanRobin — home">
@@ -29,30 +30,16 @@
   </header>
 
   <main class="wrap">
-    <section class="hero hero-home">
+    <section class="hero">
       <div class="hero-copy">
-        <h1>See what your medications really cost on <em>every</em> Medicare plan in your county.</h1>
-        <p class="sub">Free. Anonymous. No account, no calls, no catch.</p>
-        <p class="hero-aside">Helping a parent? It works just as well with their medication list.</p>
-        <a class="story-link" href="/story.html">Why we built this &rarr;</a>
-      </div>
-      <div class="hero-art" aria-hidden="true">
-        <img class="hero-robin" src="/img/robin.png?v=25" alt="" width="229" height="234" />
+        <h1>The 5-Minute Medicare Checkup</h1>
+        <p class="sub">Get the most out of the plan you already have.</p>
+        <p class="hero-aside">Five questions about the plan in your wallet. We’ll show you what your
+          medications actually cost on it, what you can change to pay less, and whether it’s worth
+          knowing about anything else — all from the data Medicare publishes. Nothing to buy, no account.</p>
+        <a class="story-link" href="/">Want to compare every plan instead? &rarr;</a>
       </div>
     </section>
-
-    <!-- Two front doors. Comparing every plan is one job; getting more out of the plan you already
-         have is a different one — and most people arrive needing the second. -->
-    <div class="doors">
-      <a class="door" href="#step-location">
-        <span class="door-title">Compare every plan &rarr;</span>
-        <span class="door-sub">See what your medications cost on every plan in your county. Start below.</span>
-      </a>
-      <a class="door" href="/checkup.html">
-        <span class="door-title">Already have a plan? &rarr;</span>
-        <span class="door-sub">Take the 5-Minute Checkup — get the most out of the plan you already have.</span>
-      </a>
-    </div>
 
     <div class="trust-strip" role="note">
       <span class="ts"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 10.5l3.5 3.5L16 5.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Free — always</span>
@@ -62,7 +49,7 @@
     </div>
     <p class="non-affil">PlanRobin is a private website — <strong>not affiliated with the federal Medicare program</strong> or any insurance company.</p>
 
-    <!-- Step 1: location (ZIP-first, county as a fallback) -->
+    <!-- Q1 — ZIP. Same IDs as the comparison page: app.js wires this verbatim. -->
     <section class="card" id="step-location">
       <h2><span class="step" aria-hidden="true">1</span> Where do you live?</h2>
       <label class="field" for="zip">
@@ -71,9 +58,7 @@
                pattern="[0-9]*" placeholder="e.g. 63011" aria-describedby="zip-status"
                aria-label="Your 5-digit ZIP code" />
       </label>
-      <!-- Confirmation, disambiguation, or an honest not-covered message all render here. -->
       <div id="zip-status" class="zip-status" aria-live="polite"></div>
-
       <details id="county-fallback">
         <summary>or choose your county from a list</summary>
         <label class="field" for="county">
@@ -83,9 +68,37 @@
       </details>
     </section>
 
-    <!-- Step 2: drugs -->
+    <!-- Q2 — the road + the plan. Reuses the shipped road question, wallet check and plan-ID field.
+         The checkup needs to know WHICH plan is hers; if she doesn't type an ID we ask her to pick it
+         from her own county's list after we've priced them. Either way, nothing is filtered away. -->
+    <section class="card" id="step-road">
+      <h2><span class="step" aria-hidden="true">2</span> What do you have today?</h2>
+      <p class="help-text">Medicare comes in two kinds, and they aren’t interchangeable. Telling us yours
+        helps us find your plan — and if you’d rather not, you can pick it from a list in a moment.</p>
+
+      <div class="road-choices" id="road-choices" role="group" aria-label="What kind of Medicare do you have today?">
+        <button type="button" class="road-choice" data-road="original">Original Medicare</button>
+        <button type="button" class="road-choice" data-road="ma">A Medicare Advantage plan</button>
+        <button type="button" class="road-choice" data-road="new">New to Medicare</button>
+        <button type="button" class="road-choice" data-road="unsure">Not sure</button>
+      </div>
+      <div id="road-status" class="road-status" aria-live="polite"></div>
+
+      <div id="road-planid">
+        <label class="field" for="road-plan-id">
+          <span class="label">Or type the <span class="term" title="This is the plan’s official Medicare ID — it’s printed on the plan’s membership card, and it’s the surest way to confirm you’re looking at the right plan.">plan ID</span> from your insurance card (like H1234-001)</span>
+          <input id="road-plan-id" type="text" autocomplete="off" inputmode="text" placeholder="e.g. H1234-001"
+                 aria-describedby="road-planid-note" aria-label="Plan ID from your insurance card" />
+        </label>
+        <p id="road-planid-hint" class="planid-hint" role="status" hidden></p>
+        <p id="road-planid-note" class="fine muted">It’s printed on your plan’s membership card. We match it
+          against your results here in your browser, to show your plan first — it isn’t sent anywhere.</p>
+      </div>
+    </section>
+
+    <!-- Q3 — medications. Same IDs; app.js wires the autocomplete verbatim. -->
     <section class="card" id="step-drugs">
-      <h2><span class="step" aria-hidden="true">2</span> Add your medications</h2>
+      <h2><span class="step" aria-hidden="true">3</span> Which medications do you take?</h2>
 
       <div class="privacy-note">
         <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M6.5 9V6.5a3.5 3.5 0 017 0V9"/></svg>
@@ -104,42 +117,44 @@
       <ul id="drug-list" class="chips" aria-label="Medications you've added"></ul>
     </section>
 
-    <!-- Optional: the reader's road. Frames the ORDER of results; never filters them. Unnumbered on
-         purpose — it is not a step, and skipping it costs her nothing. -->
-    <section class="card card-optional" id="step-road">
-      <h2>What do you have today? <span class="optional-tag">Optional</span></h2>
-      <p class="help-text">Medicare comes in two kinds, and they aren’t interchangeable. Telling us yours
-        only changes the <strong>order</strong> of your results — never which plans you see. Every plan in
-        your county is priced and shown either way. Skip this if you’d rather.</p>
+    <!-- Q4 — habits. Sets the baseline the action plan is measured against. -->
+    <section class="card card-optional" id="step-fill">
+      <h2>Where do you fill today? <span class="optional-tag">Optional</span></h2>
+      <p class="help-text">This is the starting point we measure against — so your plan below tells you
+        what to <strong>change</strong>, not just what’s possible. Skip it and we’ll assume the most
+        common case: a 30-day fill at a regular pharmacy.</p>
 
-      <div class="road-choices" id="road-choices" role="group" aria-label="What kind of Medicare do you have today?">
-        <button type="button" class="road-choice" data-road="original">Original Medicare</button>
-        <button type="button" class="road-choice" data-road="ma">A Medicare Advantage plan</button>
-        <button type="button" class="road-choice" data-road="new">New to Medicare</button>
-        <button type="button" class="road-choice" data-road="unsure">Not sure</button>
+      <span class="field-label" id="fill-where-label">Where do you pick them up?</span>
+      <div class="road-choices" id="fill-where" role="group" aria-labelledby="fill-where-label">
+        <button type="button" class="road-choice" data-fill-where="local">At a local pharmacy</button>
+        <button type="button" class="road-choice" data-fill-where="mail">By mail</button>
       </div>
-      <div id="road-status" class="road-status" aria-live="polite"></div>
 
-      <!-- Always visible, never behind a disclosure: a link that reveals a box reads as a link, and
-           this audience won't hunt for it. Secondary to the road buttons, not hidden from them. -->
-      <div id="road-planid">
-        <label class="field" for="road-plan-id">
-          <span class="label">Or type the <span class="term" title="This is the plan’s official Medicare ID — it’s printed on the plan’s membership card, and it’s the surest way to confirm you’re looking at the right plan.">plan ID</span> from your insurance card (like H1234-001)</span>
-          <input id="road-plan-id" type="text" autocomplete="off" inputmode="text" placeholder="e.g. H1234-001"
-                 aria-describedby="road-planid-note" aria-label="Plan ID from your insurance card" />
-        </label>
-        <p id="road-planid-hint" class="planid-hint" role="status" hidden></p>
-        <p id="road-planid-note" class="fine muted">It’s printed on your plan’s membership card. We match it
-          against your results here in your browser, to show your plan first — it isn’t sent anywhere.</p>
+      <span class="field-label" id="fill-days-label">How much do you get at a time?</span>
+      <div class="road-choices" id="fill-days" role="group" aria-labelledby="fill-days-label">
+        <button type="button" class="road-choice" data-fill-days="1">30 days at a time</button>
+        <button type="button" class="road-choice" data-fill-days="2">90 days at a time</button>
+      </div>
+    </section>
+
+    <!-- Q5 — benefits awareness. Only toggles a section; asks nothing we don't use (rule 18). -->
+    <section class="card card-optional" id="step-perks">
+      <h2>Do you know what extra benefits your plan includes? <span class="optional-tag">Optional</span></h2>
+      <p class="help-text">Dental, vision, an over-the-counter allowance, a gym membership — many plans
+        include things nobody ever reminds you about.</p>
+      <div class="road-choices" id="perks-known" role="group" aria-label="Do you know what extra benefits your plan includes?">
+        <button type="button" class="road-choice" data-perks="yes">Yes, I know what mine includes</button>
+        <button type="button" class="road-choice" data-perks="no">No</button>
+        <button type="button" class="road-choice" data-perks="unsure">Not sure</button>
       </div>
     </section>
 
     <div class="actions">
-      <button id="go" class="primary" disabled>See plan costs</button>
+      <button id="go" class="primary" disabled>See my checkup</button>
       <span id="go-hint" class="go-hint">Enter your ZIP (or pick a county) and at least one medication.</span>
     </div>
 
-    <!-- Results (loading / results / empty / error / not-found all render here) -->
+    <!-- The Checkup Report renders here. -->
     <section id="results" hidden aria-live="polite"></section>
 
     <aside class="help-aside ship">
@@ -157,16 +172,6 @@
   </main>
 
   <footer class="site-footer">
-    <svg class="foot-sage" viewBox="0 0 120 170" aria-hidden="true" fill="none">
-      <path d="M62 168 C 50 120, 44 74, 64 22" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-      <g fill="currentColor">
-        <ellipse cx="44" cy="128" rx="17" ry="7" transform="rotate(-32 44 128)"/>
-        <ellipse cx="78" cy="106" rx="17" ry="7" transform="rotate(26 78 106)"/>
-        <ellipse cx="47" cy="86" rx="15" ry="6.5" transform="rotate(-28 47 86)"/>
-        <ellipse cx="74" cy="62" rx="14" ry="6" transform="rotate(28 74 62)"/>
-        <ellipse cx="56" cy="42" rx="12" ry="5.5" transform="rotate(-24 56 42)"/>
-      </g>
-    </svg>
     <div class="wrap foot-grid">
       <div class="foot-main">
         <p id="provenance" class="provenance">Data: loading…</p>
@@ -196,5 +201,6 @@
   <script src="/passport.js?v=36"></script>
   <script src="/vendor/qrcode.js?v=36"></script>
   <script src="/app.js?v=36"></script>
+  <script src="/checkup.js?v=36"></script>
 </body>
 </html>

@@ -344,6 +344,192 @@ t('roadsMix: true only when BOTH roads are present', () => {
   assert.strictEqual(F.roadsMix([]), false);
 });
 
+console.log('\nSeason awareness (the window is a parameter; the verdict is computed on her clock):');
+
+const AEP_META = { enrollment: require('../tools/overrides/statutory-params').ENROLLMENT };
+
+t('inAep: boundaries inclusive on BOTH ends; the window comes from the engine parameter', () => {
+  const aep = AEP_META.enrollment.aep;
+  assert.strictEqual(F.inAep(aep, new Date(2026, 9, 15)), true, 'Oct 15 is open');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 11, 7)), true, 'Dec 7 is open');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 9, 14)), false, 'Oct 14 is closed');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 11, 8)), false, 'Dec 8 is closed');
+  assert.strictEqual(F.inAep(aep, new Date(2026, 6, 8)), false, 'July is closed');
+  assert.strictEqual(F.inAep(null, new Date()), null, 'no window → no guess');
+});
+
+t('seasonLine: speaks the right sentence either side of the boundary, and never invents a date', () => {
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 10, 1)), 'switching is open until December 7');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 9, 15)), 'switching is open until December 7');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 11, 7)), 'switching is open until December 7');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 11, 8)), 'plan switching opens October 15');
+  assert.strictEqual(F.seasonLine(AEP_META, new Date(2026, 6, 8)), 'plan switching opens October 15');
+  assert.strictEqual(F.seasonLine({}, new Date()), null, 'meta without a window → say nothing seasonal');
+});
+
+console.log('\nFair-price check — disclosure, never a grade:');
+
+// planDisplayTotal reads breakdown/annualEstimate; planCoverage reads drugs+notCovered.
+const fpPlan = (id, total, notCovered = 0, type = 'MA-PD') => ({
+  planId: id, planType: type, notCovered,
+  annualEstimate: total, breakdown: { premiumAnnual: total, copayAnnual: 0, coinsuranceEstRxcuis: [], capBinds: false },
+  drugs: notCovered ? { a: { covered: true }, b: { covered: false } } : { a: { covered: true }, b: { covered: true } },
+});
+const fpGroup = (yours, others) => F.groupPlans([yours].concat(others), { planId: yours.planId });
+
+t('fires when a same-road plan covering everything is at least the floor cheaper', () => {
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 800), fpPlan('H3-003', 700)]));
+  assert.strictEqual(r.fires, true);
+  assert.strictEqual(r.reason, 'cheaper');
+  assert.strictEqual(r.n, 2, 'both alternatives clear the floor');
+  assert.strictEqual(r.atLeast, 200, 'all N are at least this much less (the SMALLEST qualifying gap)');
+  assert.strictEqual(r.road, 'ma');
+});
+
+t('BOUNDARY AT THE FLOOR: exactly-floor fires; a dollar under it is silence', () => {
+  const at = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 900)]));   // exactly $100
+  assert.strictEqual(at.fires, true, '$100 under == the floor → fires');
+  assert.strictEqual(at.atLeast, 100);
+  const under = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 901)])); // $99
+  assert.strictEqual(under.fires, false, '$99 under → below the floor');
+  assert.strictEqual(under.reason, 'below-floor');
+  assert.strictEqual(F.FAIR_PRICE_FLOOR_UNTUNED, 100, 'the shipped placeholder');
+});
+
+t('"at least $Y" agrees with the totals on her cards (gaps come from the DISPLAYED totals)', () => {
+  // planDisplayTotal is the sum of ROUNDED components — literally the number printed on the card. The
+  // gap we claim must be the one she could work out herself from the two cards; a raw-cents figure
+  // would silently disagree with the screen.
+  assert.strictEqual(F.planDisplayTotal(fpPlan('H2-002', 812.4)), 812, 'the card says $812');
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 812.4)]));
+  assert.strictEqual(r.atLeast, 188, '$1,000 − $812 = $188 — exactly what the two cards show');
+});
+
+t('her plan missing a drug ALWAYS fires, whatever the money says', () => {
+  // hers is the CHEAPEST — but it doesn't cover everything she takes
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 100, 1), [fpPlan('H2-002', 900)]));
+  assert.strictEqual(r.fires, true, 'a gap is worth knowing at any price');
+  assert.strictEqual(r.reason, 'not-covered');
+  assert.strictEqual(r.n, 1, 'plans that cover all of them');
+  assert.strictEqual(r.atLeast, null, 'no cheaper alternative → no savings claimed');
+  assert.strictEqual(r.yourCoverage.complete, false);
+});
+
+// REGRESSION (2026-07-16): "ALWAYS fires" used to lose to the no-alternatives early return, so the
+// ONE case where silence is least affordable — her plan has a gap AND nothing else covers everything
+// either — printed no disclosure at all. The test above never caught it because it always had an
+// alternative on the board. "Always" has to mean always, including when there's nowhere to go.
+t('her plan missing a drug fires even when NOTHING else covers everything either', () => {
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 100, 1), [fpPlan('H2-002', 900, 1)]));
+  assert.strictEqual(r.fires, true, 'a gap is worth knowing even with nowhere to switch');
+  assert.strictEqual(r.reason, 'not-covered', 'NOT "no-alternatives" — that would swallow the gap');
+  assert.strictEqual(r.n, 0, 'and the copy must handle zero alternatives without saying "0 other plans"');
+  assert.strictEqual(r.atLeast, null);
+});
+
+t('SILENCE: no same-road alternative covers everything → nothing to disclose', () => {
+  // …but only when HER plan is fine. Silence is for "nothing to say", never for "nothing to be done".
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 100, 1)]));
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'no-alternatives');
+});
+
+t('SILENCE: cheapest on her road → no "your plan looks good" grade', () => {
+  const r = F.fairPriceCheck(fpGroup(fpPlan('H1-001', 500), [fpPlan('H2-002', 900), fpPlan('H3-003', 1200)]));
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'below-floor', 'we disclose gaps; we never rank loyalty');
+});
+
+t('the other road is never compared against (that is not a fair compare)', () => {
+  // a PDP is far cheaper, but she's on the MA road — comparing across roads would be dishonest
+  const yours = fpPlan('H1-001', 1000);
+  const g = F.groupPlans([yours, fpPlan('S9-009', 10, 0, 'PDP')], { planId: 'H1-001' });
+  const r = F.fairPriceCheck(g);
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'no-alternatives', 'the cheap PDP is on the other road — not counted');
+});
+
+t('no anchored plan → the check cannot run', () => {
+  const r = F.fairPriceCheck(F.groupPlans([fpPlan('H1-001', 1000)], { road: 'ma' }));
+  assert.strictEqual(r.fires, false);
+  assert.strictEqual(r.reason, 'no-plan');
+});
+
+t('the floor is injectable, so re-tuning is a data change (not a code change)', () => {
+  const g = fpGroup(fpPlan('H1-001', 1000), [fpPlan('H2-002', 950)]);   // $50 gap
+  assert.strictEqual(F.fairPriceCheck(g).fires, false, '$50 < $100 default');
+  assert.strictEqual(F.fairPriceCheck(g, { floor: 50 }).fires, true, 'same data, tuned floor → fires');
+});
+
+console.log('\nAction plan — grouped by action, every dollar from a published cell:');
+
+// phases: initial-coverage level '1', byDaysSupply '1' (30-day) / '2' (90-day), per channel.
+const apPlan = (cells) => ({ drugs: { d1: { covered: true, phases: ph({ '1': cells }) } } });
+const apDrugs = [['d1', { label: 'duloxetine 20 MG' }]];
+
+t('a real mail saving becomes a MOVE, priced from cells × the engine fills-per-year', () => {
+  // $10 per 30-day standard retail = $120/yr; $6 per 90-day by mail = $24/yr → save $96
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredMail: copay(30) }, '2': { preferredMail: copay(6) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.strictEqual(a.moves.length, 1);
+  assert.strictEqual(a.moves[0].current, 120);
+  assert.strictEqual(a.moves[0].to, 24, '$6 × 4 fills');
+  assert.strictEqual(a.moves[0].saving, 96);
+  assert.strictEqual(a.moves[0].days, '2', 'mail’s point is the 90-day discount');
+  assert.strictEqual(a.saving, 96);
+  assert.strictEqual(a.nothingToDo, false);
+});
+
+t('below the calm floor → KEEP, not a move (we don’t cry opportunity over $3)', () => {
+  // $10/30-day retail = $120/yr vs $30/90-day mail = $120/yr → $0 saving
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredMail: copay(10) }, '2': { preferredMail: copay(30) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.deepStrictEqual(a.moves, []);
+  assert.strictEqual(a.keep.length, 1);
+  assert.strictEqual(a.nothingToDo, true, 'the warm do-nothing verdict is a designed state');
+  assert.strictEqual(a.saving, 0);
+  assert.strictEqual(a.min, 25);
+});
+
+t('already on mail → the action is the 90-day upgrade, measured from HER baseline', () => {
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredMail: copay(10) }, '2': { preferredMail: copay(5) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'mail', days: '1' });   // she already fills by mail
+  assert.strictEqual(a.baseline.channel, 'preferredMail', 'baseline follows what she told us');
+  assert.strictEqual(a.moves[0].current, 120, '$10 × 12 by mail today');
+  assert.strictEqual(a.moves[0].to, 20, '$5 × 4 at 90-day');
+  assert.strictEqual(a.moves[0].saving, 100);
+  assert.strictEqual(a.baselineAssumed, false, 'no standard-pharmacy assumption when she says mail');
+});
+
+t('coinsurance can’t be compared by pharmacy → listed honestly, never guessed', () => {
+  const plan = apPlan({ '1': { standardRetail: coins(0.25), preferredMail: coins(0.25) } });
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.deepStrictEqual(a.moves, []);
+  assert.deepStrictEqual(a.keep, []);
+  assert.strictEqual(a.cant.length, 1, 'named, not silently dropped and not modelled');
+  assert.strictEqual(a.cant[0].label, 'duloxetine 20 MG');
+});
+
+// A not-covered drug is no ACTION (there's no pharmacy price to improve on a drug the plan won't pay
+// for) — but it is REPORTED, not dropped. Dropping it silently is what once let "nothing to move"
+// render as "Good news, you're already on the cheapest option" for a plan covering nothing she takes.
+t('a not-covered drug is no action — but it is reported, never silently dropped', () => {
+  const plan = { drugs: { d1: { covered: false } } };
+  const a = F.actionPlan(plan, apDrugs, { where: 'local', days: '1' });
+  assert.deepStrictEqual([a.moves, a.keep, a.cant], [[], [], []], 'no action to take');
+  assert.deepStrictEqual(a.notCovered.map((x) => x.rxcui), ['d1'], 'but it comes back out');
+  assert.strictEqual(a.nothingToDo, true, 'nothing to MOVE…');
+  assert.strictEqual(a.allClear, false, '…which is NOT the same as all-clear: the verdict is not earned');
+});
+
+t('baseline honesty: a local baseline is the standardRetail anchor, and says it assumed that', () => {
+  const plan = apPlan({ '1': { standardRetail: copay(10), preferredRetail: copay(2), preferredMail: copay(1) } });
+  const a = F.actionPlan(plan, apDrugs, {});   // defaults
+  assert.strictEqual(a.baseline.channel, 'standardRetail');
+  assert.strictEqual(a.baseline.days, '1');
+  assert.strictEqual(a.baselineAssumed, true, 'the renderer must disclose the assumption — a preferred local pharmacy would make the saving smaller');
+});
+
 console.log('\nPrice basis — a price never ships without its basis:');
 
 t('HEADLINE_BASIS mirrors the engine projection basis (prose and math cannot disagree)', () => {
@@ -357,6 +543,62 @@ t('HEADLINE_BASIS mirrors the engine projection basis (prose and math cannot dis
   assert.ok(B.ofEachLabel.includes(`${B.days}-day fill`), B.ofEachLabel);
   assert.strictEqual(F.headlineAnnual(10), 120);   // $10.00 per 30-day fill → $120.00/yr
   assert.strictEqual(F.headlineAnnual(0), 0);
+});
+
+// ---- UX-REVIEW #13: FALSE REASSURANCE — reassurance must be EARNED --------------------------------
+// Second catch of the same pattern (2026-07-17, Evan on preview). The deductible-exemption note said
+// "your medications … are on tiers the deductible skips" — but a drug the plan doesn't cover is on NO
+// tier, so the sentence was vacuously true and read as an all-clear. The API guards the zero case;
+// the client re-checks anyway, because a payload must never be the only thing between a reader and a
+// false all-clear.
+console.log('\nEarned reassurance — the deductible-exemption note (UX-REVIEW #13):');
+
+const exPlan = (drugs, opts) => Object.assign({
+  planId: 'H1-001', planType: 'MA-PD', drugs,
+  breakdown: { deductibleExempt: true, deductibleAmount: 385 },
+}, opts || {});
+const covd = { covered: true, tier: 1, flags: {}, headline: { kind: 'copay', dollars: 0 } };
+const gap = { covered: false };
+
+t('SUPPRESSED when nothing she takes is covered — even if the payload insists it is exempt', () => {
+  // a deliberately LYING payload: deductibleExempt true, zero coverage. The client must not repeat it.
+  const r = F.deductibleExemptNote(exPlan({ a: gap, b: gap }));
+  assert.strictEqual(r, null, 'a drug on NO tier is not "on a tier the deductible skips"');
+});
+
+t('SCOPED when coverage is partial — it speaks only of the drugs it is true of', () => {
+  const r = F.deductibleExemptNote(exPlan({ a: covd, b: gap }));
+  assert.ok(r, 'the note still renders — one drug IS covered and exempt');
+  assert.strictEqual(r.complete, false);
+  assert.ok(/doesn't apply to the medications it covers/.test(r.text), r.text);
+  assert.ok(!/apply to your medications/.test(r.text), 'never claims the whole basket: ' + r.text);
+});
+
+t('UNSCOPED when everything is covered — "your medications" is then simply true', () => {
+  const r = F.deductibleExemptNote(exPlan({ a: covd, b: covd }));
+  assert.ok(/doesn't apply to your medications/.test(r.text), r.text);
+  assert.strictEqual(r.complete, true);
+  assert.ok(/\$385 deductible/.test(r.text), 'and states the amount it is talking about');
+});
+
+t('silent when the plan has no exemption at all (no note invented)', () => {
+  assert.strictEqual(F.deductibleExemptNote({ drugs: { a: covd }, breakdown: {} }), null);
+  assert.strictEqual(F.deductibleExemptNote({ drugs: { a: covd } }), null);
+  assert.strictEqual(F.deductibleExemptNote({}), null);
+});
+
+t('the zero-coverage FIXTURE matches what the live API actually emits (it used to lie)', () => {
+  // results-zero.json claimed deductibleExempt=true on 5 of 8 zero-coverage plans; the live API
+  // returns false on all 82 real ones. A fixture that encodes a state the API cannot produce is a
+  // hermetic test asserting a fiction — the floors were "green" on a screen that couldn't happen.
+  const zero = require('./ux/fixtures/results-zero.json');
+  for (const p of zero.plans) {
+    const covered = Object.values(p.drugs || {}).filter((d) => d && d.covered).length;
+    if (covered === 0) {
+      assert.strictEqual((p.breakdown || {}).deductibleExempt, false,
+        `${p.planId}: zero coverage cannot be deductible-exempt (the API guards this)`);
+    }
+  }
 });
 
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

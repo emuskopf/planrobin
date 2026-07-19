@@ -53,6 +53,42 @@ const STATES = [
   { name: 'story', async setup(page) { await page.goto('/story.html'); } },
 ];
 
+// ---- the 5-Minute Checkup (the second front door). It reuses the comparison page's intake, so the
+// same crush/overflow surfaces apply — and the report adds four of its own.
+async function checkupIntake(page, o) {
+  await page.goto('/checkup.html');
+  await H.setCounty(page);
+  await H.addDrug(page, '20 MG');            // a drug the fixture actually prices
+  if (o.planId) await page.fill('#road-plan-id', o.planId);
+  if (o.road) await page.click(`.road-choice[data-road="${o.road}"]`);
+  if (o.where) await page.click(`.road-choice[data-fill-where="${o.where}"]`);
+  if (o.days) await page.click(`.road-choice[data-fill-days="${o.days}"]`);
+  if (o.perks) await page.click(`.road-choice[data-perks="${o.perks}"]`);
+  await page.click('#go');
+}
+STATES.push(
+  // All five questions on screen at once — the whole intake before a single answer.
+  { name: 'checkup-intake', async setup(page) { await page.goto('/checkup.html'); } },
+  // Skip path: no plan ID → the picker, built from the plans we already priced.
+  { name: 'checkup-picker', results: 'results-two-roads.json', async setup(page) { await checkupIntake(page, { road: 'ma' }); await page.waitForSelector('.picker'); } },
+  // The full report: headline + action plan + fair-price + perks + bridge.
+  { name: 'checkup-report', results: 'results-two-roads.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', where: 'local', days: '1', perks: 'unsure' }); await page.waitForSelector('.action-plan'); } },
+  // Her plan covers nothing she takes → the fair-price check must fire, not-covered leading.
+  { name: 'checkup-report-notcovered', results: 'results-zero.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', perks: 'no' }); await page.waitForSelector('.plan-yours'); } },
+  // The shape real Missouri data takes: one drug covered, one off-formulary everywhere. Both a keep
+  // heading AND a gap on one report — the combination neither other fixture produces.
+  { name: 'checkup-report-partial-gap', results: 'results-partial-gap.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await H.addDrug(page, '60 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('.road-choice[data-perks="no"]');
+    await page.click('#go');
+    await page.waitForSelector('.action-warn');
+  } },
+);
+
 for (const st of STATES) {
   test.describe(st.name, () => {
     for (const vw of VIEWPORTS) {
@@ -71,23 +107,64 @@ for (const st of STATES) {
   });
 }
 
-// Passport is a PRINT artifact (letter width), not a mobile-viewport screen — audit it under print
-// media at paper width for overlap/type/contrast (horizontal overflow + touch targets are N/A on paper).
-test.describe('passport-print', () => {
-  for (const ft of FONTS) {
-    test(`passport-print @ 816px / ${ft.name}`, async ({ page }) => {
-      await H.interceptApis(page, { results: 'results-complete.json' });
-      await page.setViewportSize({ width: 816, height: 1056 });
-      await page.goto('/');
-      await H.runToResults(page);
-      await page.emulateMedia({ media: 'print' });
-      await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
-      await H.setFontScale(page, ft.scale);
-      await page.waitForTimeout(80);
-      // Print typography uses point sizes tuned for paper — the 14/18px SCREEN type floor and the
-      // 44px touch rule don't apply. We still hold the passport to no-overlap + AA contrast.
-      const violations = await H.collectViolations(page, { rules: ['overlap', 'contrast'] });
-      expect(violations, H.formatViolations({ state: 'passport-print', viewport: 816, font: ft.name }, violations)).toEqual([]);
-    });
-  }
-});
+// The passports are PRINT artifacts (letter width), not mobile-viewport screens — audited under print
+// media at paper width for overlap/type/contrast (horizontal overflow + touch targets are N/A on
+// paper). Both doors print a sheet, so both sheets get audited.
+const SHEETS = [
+  // the comparison: every plan, ranked
+  { name: 'passport-print', results: 'results-complete.json', async setup(page) { await page.goto('/'); await H.runToResults(page); } },
+  // the checkup: her plan + the action plan. Its own page 1 (verdict, bullets, scripts, small print).
+  { name: 'checkup-passport-print', results: 'results-two-roads.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('.road-choice[data-fill-where="local"]');
+    await page.click('.road-choice[data-fill-days="1"]');
+    await page.click('.road-choice[data-perks="unsure"]');
+    await page.click('#go');
+    await page.waitForSelector('.action-plan');
+  } },
+  // her plan covering nothing she takes: the warn verdict + "Worth knowing" on paper (the case that
+  // used to print "Good news — already the cheapest option").
+  { name: 'checkup-passport-print-notcovered', results: 'results-zero.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('#go');
+    await page.waitForSelector('.plan-yours');
+  } },
+  // a keep heading AND a gap — the real-data shape whose sub-heading used to open the reopen block's
+  // column layout and scramble everything after it.
+  { name: 'checkup-passport-print-partial-gap', results: 'results-partial-gap.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await H.addDrug(page, '60 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('.road-choice[data-perks="no"]');
+    await page.click('#go');
+    await page.waitForSelector('.action-warn');
+  } },
+];
+
+for (const sheet of SHEETS) {
+  test.describe(sheet.name, () => {
+    for (const ft of FONTS) {
+      test(`${sheet.name} @ 816px / ${ft.name}`, async ({ page }) => {
+        await H.interceptApis(page, { results: sheet.results });
+        await page.setViewportSize({ width: 816, height: 1056 });
+        await sheet.setup(page);
+        await page.emulateMedia({ media: 'print' });
+        await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+        await H.setFontScale(page, ft.scale);
+        await page.waitForTimeout(80);
+        // Print typography uses point sizes tuned for paper — the 14/18px SCREEN type floor and the
+        // 44px touch rule don't apply. We still hold the passport to no-overlap + AA contrast.
+        const violations = await H.collectViolations(page, { rules: ['overlap', 'contrast'] });
+        expect(violations, H.formatViolations({ state: sheet.name, viewport: 816, font: ft.name }, violations)).toEqual([]);
+      });
+    }
+  });
+}
