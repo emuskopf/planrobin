@@ -278,24 +278,26 @@ function renderActionPlan(plan, a) {
     return wrap;
   }
 
-  // Grouped by ACTION: one instruction, the drugs it covers, the money, then how to actually do it.
-  if (a.moves.length) {
+  // One grouped action: the instruction head, the drugs it covers (drug name given weight; the rest
+  // is the shared sentence verbatim, so the li's text still equals the printed line).
+  const actionGroup = (head, list, lineFn, reassure) => {
     const act = el('div', { className: 'action-item' });
-    act.append(el('h3', { className: 'action-head', textContent: C.moveHead(a) }));
+    act.append(el('h3', { className: 'action-head', textContent: head }));
     const ul = el('ul', { className: 'action-drugs' });
-    for (const m of a.moves) {
-      // The shared sentence, with only its leading drug name given weight. Emphasis is presentation;
-      // the characters are identical either way, so the li's text still equals the printed line.
-      const line = C.moveLine(m), li = el('li', { className: 'action-drug' });
+    for (const m of list) {
+      const line = lineFn(m), li = el('li', { className: 'action-drug' });
       if (line.indexOf(m.label) === 0) li.append(el('strong', { textContent: m.label }), document.createTextNode(line.slice(m.label.length)));
       else li.textContent = line;
       ul.append(li);
     }
     act.append(ul);
-    // The "how" (the words to say) now lives in Questions to ask, so it isn't repeated here.
-    act.append(el('p', { className: 'action-reassure', textContent: C.reassure }));
+    if (reassure) act.append(el('p', { className: 'action-reassure', textContent: C.reassure }));
     wrap.append(act);
-  }
+  };
+
+  // Grouped by ACTION — mail move and preferred-pharmacy switch each stand alone (never mixed).
+  if (a.moves.length) actionGroup(C.moveHead(a), a.moves, C.moveLine, true);
+  if (a.switches.length) actionGroup(C.switchHead(a), a.switches, C.switchLine, false);
 
   if (a.keep.length) {
     wrap.append(el('div', { className: 'action-item' }, [
@@ -305,7 +307,7 @@ function renderActionPlan(plan, a) {
   }
   if (a.cant.length) wrap.append(el('p', { className: 'muted small', textContent: C.cant(a) }));
   // The baseline note explains a measurement — so it only shows when something was measured.
-  if (a.moves.length || a.keep.length) wrap.append(renderBaselineNote(a));
+  if (a.moves.length || a.switches.length || a.keep.length) wrap.append(renderBaselineNote(a));
   return wrap;
 }
 

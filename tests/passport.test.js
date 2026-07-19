@@ -233,6 +233,18 @@ t('v2: wouldSwitchingFix says No/Yes/Partly honestly, and never hides a gap (liv
   assert.strictEqual(C.wouldSwitchingFix({ nowhere: [], elsewhere: [] }, 'X'), null, 'no gap → nothing to say');
 });
 
+t('v2: the preferred-pharmacy switch renders as its own action, with true dollars + how-to question', () => {
+  const C = P.checkupCopy;
+  const pref = require('./ux/fixtures/results-preferred-switch.json');
+  const s = P.passportStrings(P.checkupModel(pref, drugs, Object.assign({}, CK, { fill: { where: 'local', days: '1' }, now: NOW })));
+  assert.ok(s.some((x) => /preferred pharmacies — saving about \$/.test(x)), 'the switch action head with its subtotal');
+  assert.ok(s.some((x) => /at a preferred pharmacy\. Saving about \$/.test(x)), 'a per-drug switch line with true dollars');
+  assert.ok(s.includes(C.switchQuestion), 'the how-to lives in Questions to ask (no named pharmacy)');
+  assert.ok(!s.some((x) => /Walgreens|CVS|Walmart|Costco/.test(x)), 'no named pharmacy — that is Pharmacy Network V2');
+  // next step is the switch, not "nothing to change"
+  assert.ok(s.some((x) => /^Fill .* at one of your plan’s preferred pharmacies — about \$/.test(x)), 'switch is the next step');
+});
+
 t('v2: the formulary-exception path fires ONLY when NO county plan covers the drug', () => {
   const C = P.checkupCopy;
   const F = require('../site/format.js');

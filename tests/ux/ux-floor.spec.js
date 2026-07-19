@@ -75,6 +75,19 @@ STATES.push(
   { name: 'checkup-report', results: 'results-two-roads.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', where: 'local', days: '1', perks: 'unsure' }); await page.waitForSelector('.action-plan'); } },
   // Her plan covers nothing she takes → the fair-price check must fire, not-covered leading.
   { name: 'checkup-report-notcovered', results: 'results-zero.json', async setup(page) { await checkupIntake(page, { planId: 'H2041-001', perks: 'no' }); await page.waitForSelector('.plan-yours'); } },
+  // The preferred-pharmacy switch action: a covered drug cheapest at a preferred pharmacy (~1 in 3
+  // real cases). Exercises the switch group + the 'switch' next-step + the switch question.
+  { name: 'checkup-report-pref-switch', results: 'results-preferred-switch.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await H.addDrug(page, '60 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('.road-choice[data-fill-where="local"]');
+    await page.click('.road-choice[data-fill-days="1"]');
+    await page.click('#go');
+    await page.waitForSelector('.action-plan');
+  } },
   // The shape real Missouri data takes: one drug covered, one off-formulary everywhere. Both a keep
   // heading AND a gap on one report — the combination neither other fixture produces.
   { name: 'checkup-report-partial-gap', results: 'results-partial-gap.json', async setup(page) {

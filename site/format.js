@@ -354,52 +354,72 @@
   const annualOfCell = (cell, ds) => (cell && cell.kind === 'copay' && ACTION_FILLS[ds])
     ? Number(cell.dollars) * ACTION_FILLS[ds] : null;
 
-  // baseline = { where: 'local'|'mail', days: '1'|'2' } (Q4). Defaults to the product's anchor:
-  // a 30-day fill at a standard pharmacy.
+  // Cheapest option across a set of days-supplies × channels — or null if none is a priceable copay.
+  function bestAcross(res, daysList, channels) {
+    let best = null, bd = null, bc = null;
+    for (const ds of daysList) for (const ch of channels) {
+      const a = annualOfCell(cellAt(res.phases, ds, ch), ds);
+      if (a !== null && (best === null || a < best)) { best = a; bd = ds; bc = ch; }
+    }
+    return best === null ? null : { annual: best, days: bd, channel: bc };
+  }
+
+  // baseline = { where: 'local'|'preferred'|'mail', days: '1'|'2' } (Q4). Defaults to the product's
+  // anchor: a 30-day fill at a STANDARD local pharmacy.
+  //
+  // TWO pharmacy levers, each a distinct ACTION (never two competing actions for one drug):
+  //   • mail move       — the cheapest mail price (searched across both days-supplies: 90-day is the point)
+  //   • preferred switch — preferred retail at HER current days-supply (a location change, same supply)
+  // Per drug we take the LARGER saving as the action and mention the runner-up in one clause. When she
+  // told us (Q4) she already uses a preferred pharmacy, the baseline IS preferredRetail, so a preferred
+  // switch can't fire on a drug already at that price — baseline honesty, not a made-up saving.
   function actionPlan(plan, drugs, baseline, opts) {
     const min = (opts && opts.min != null) ? opts.min : ACTION_MIN_DEFAULT;
     const where = (baseline && baseline.where) || 'local';
     const days = (baseline && baseline.days) || '1';
-    const baseChannel = where === 'mail' ? 'preferredMail' : 'standardRetail';
-    const moves = [], keep = [], cant = [], notCovered = [];
-    let saving = 0;
+    const baseChannel = where === 'mail' ? 'preferredMail' : (where === 'preferred' ? 'preferredRetail' : 'standardRetail');
+    const moves = [], switches = [], keep = [], cant = [], notCovered = [];
     for (const entry of (drugs || [])) {
       const rxcui = entry[0], meta = entry[1] || {};
       const res = plan && plan.drugs && plan.drugs[rxcui];
       // Not-covered drugs have no pharmacy price to improve, so they're not an ACTION — but they are
-      // REPORTED, never silently dropped. Skipping them quietly is what let "nothing to move" render
-      // as "Good news, you're already on the cheapest option" for a plan covering nothing she takes.
-      // The renderer owes her that word before any verdict about pharmacies.
+      // REPORTED, never silently dropped (that's what let "nothing to move" read as "all is well").
       if (!res || !res.covered) { notCovered.push({ rxcui: rxcui, label: meta.label }); continue; }
       const current = annualOfCell(cellAt(res.phases, days, baseChannel), days);
       if (current === null) { cant.push({ rxcui: rxcui, label: meta.label }); continue; }
-      // Mail's whole point is the 90-day discount, so search mail across BOTH days-supplies.
-      let best = null, bestDays = null, bestChannel = null;
-      for (const ds of ['1', '2']) {
-        for (const ch of MAIL_CHANNELS) {
-          const a = annualOfCell(cellAt(res.phases, ds, ch), ds);
-          if (a !== null && (best === null || a < best)) { best = a; bestDays = ds; bestChannel = ch; }
-        }
-      }
-      const delta = best === null ? null : current - best;
-      if (delta !== null && delta >= min) {
-        moves.push({ rxcui: rxcui, label: meta.label, current: current, to: best, saving: delta, days: bestDays, channel: bestChannel });
-        saving += delta;
+
+      const mail = bestAcross(res, ['1', '2'], MAIL_CHANNELS);   // mail: 90-day is the point → search both
+      const prefA = annualOfCell(cellAt(res.phases, days, 'preferredRetail'), days); // preferred: her supply
+      const pref = prefA === null ? null : { annual: prefA, days: days, channel: 'preferredRetail' };
+      const mailDelta = mail ? current - mail.annual : -Infinity;
+      const prefDelta = pref ? current - pref.annual : -Infinity;
+
+      // Larger saving is the action; ties go to mail (the product's established lever). The other lever,
+      // if it ALSO clears the floor, is the runner-up (one clause, never a second action for this drug).
+      const mailWins = mailDelta >= prefDelta;
+      const primary = mailWins ? { opt: mail, delta: mailDelta, kind: 'mail' } : { opt: pref, delta: prefDelta, kind: 'switch' };
+      const runner  = mailWins ? { opt: pref, delta: prefDelta, kind: 'switch' } : { opt: mail, delta: mailDelta, kind: 'mail' };
+      if (primary.opt && primary.delta >= min) {
+        const runnerUp = (runner.opt && runner.delta >= min) ? { channel: runner.kind, saving: round(runner.delta), to: runner.opt.annual } : null;
+        const item = { rxcui: rxcui, label: meta.label, current: current, to: primary.opt.annual, saving: round(primary.delta), days: primary.opt.days, channel: primary.opt.channel, runnerUp: runnerUp };
+        (primary.kind === 'mail' ? moves : switches).push(item);
       } else {
         keep.push({ rxcui: rxcui, label: meta.label, annual: current });
       }
     }
+    const sumSaving = (arr) => round(arr.reduce((s, x) => s + x.saving, 0));
     return {
-      moves: moves, keep: keep, cant: cant, notCovered: notCovered,
-      saving: round(saving),
-      // No pharmacy move to make. NOT the same as "all is well" — read it with `cant` and `notCovered`
-      // before speaking: the warm verdict is only honest when there's nothing else outstanding.
-      nothingToDo: moves.length === 0,
-      // The warm do-nothing verdict has EARNED its "we checked" only when every drug she takes was
-      // actually checkable: covered, priced as a copay, and already at its best channel.
-      allClear: moves.length === 0 && cant.length === 0 && notCovered.length === 0,
+      moves: moves, switches: switches, keep: keep, cant: cant, notCovered: notCovered,
+      saving: round(sumSaving(moves) + sumSaving(switches)),  // total across both levers
+      moveSaving: sumSaving(moves), switchSaving: sumSaving(switches),
+      // No action of ANY kind to take. NOT the same as "all is well" — read with cant/notCovered too.
+      nothingToDo: moves.length === 0 && switches.length === 0,
+      // The warm do-nothing verdict is earned ONLY when no action of any kind fires and every drug was
+      // actually checkable (covered, priced as a copay, already at its best channel).
+      allClear: moves.length === 0 && switches.length === 0 && cant.length === 0 && notCovered.length === 0,
       baseline: { where: where, days: days, channel: baseChannel },
-      // she told us she already fills at a standard local pharmacy → the baseline caveat applies
+      // only the STANDARD-local baseline is an assumption we should hedge ("you may already pay less");
+      // if she told us preferred or mail, we're not assuming.
       baselineAssumed: where === 'local',
       min: min,
     };
@@ -472,7 +492,11 @@
   //   • coinsurance — covered but priced as coinsurance, so we can't confirm best price (actionPlan.cant)
   // NO single-word verdict — the header states the counts and lets her read them.
   function checkupScorecard(a) {
-    const attention = a.notCovered.length + a.moves.length;
+    // attention = a gap (not covered) OR a cheaper option exists (a mail move OR a preferred switch).
+    // A switch drug is NOT "at your best price" — she could pay less — so it counts as attention, not
+    // best; leaving it out entirely (as an earlier version did) dropped it from the tally, so the
+    // counts didn't add up to her basket size.
+    const attention = a.notCovered.length + a.moves.length + (a.switches ? a.switches.length : 0);
     const best = a.keep.length;
     const coinsurance = a.cant.length;
     return { reviewed: attention + best + coinsurance, best, attention, coinsurance };
@@ -489,7 +513,8 @@
   // it isn't produced yet — flagged, not invented.)
   function nextStep(a, split) {
     if (split && split.nowhere.length) return { kind: 'exception', drugs: split.nowhere };
-    if (a.moves.length) return { kind: 'move', saving: a.saving, days: a.moves[0].days, n: a.moves.length, drugs: a.moves };
+    if (a.moves.length) return { kind: 'move', saving: a.moveSaving, days: a.moves[0].days, n: a.moves.length, drugs: a.moves };
+    if (a.switches.length) return { kind: 'switch', saving: a.switchSaving, n: a.switches.length, drugs: a.switches };
     if (split && split.elsewhere.length) return { kind: 'compare', drugs: split.elsewhere };
     return { kind: 'nothing' };
   }

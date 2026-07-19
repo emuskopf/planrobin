@@ -682,4 +682,81 @@ t('goodNewsBullets are computed-true only, each traceable; empty when nothing to
   assert.ok(good2.every((b) => b.kind === 'best-price'), 'only the genuinely-covered drug is good news');
 });
 
+// ---- preferred-pharmacy switch as a distinct action -------------------------------------------
+console.log('\nPreferred-pharmacy switch — the fourth next-step lever:');
+
+// a plan whose ONE drug is cheapest at preferred retail (not mail): standardRetail $30/fill,
+// preferredRetail $5/fill, mail $28/fill. 30-day baseline → switch saves 12*(30-5)=$300/yr.
+const prefPlan = (over) => ({ planId: 'P', planName: 'P', planType: 'MA-PD', premium: 0, deductible: 0, notCovered: 0,
+  drugs: { d1: { covered: true, tier: 2, flags: {}, headline: { kind: 'copay', dollars: 30 }, appliedOverrides: [],
+    phases: { '1': { byDaysSupply: { '1': Object.assign({ standardRetail: { kind: 'copay', dollars: 30 }, preferredRetail: { kind: 'copay', dollars: 5 }, preferredMail: { kind: 'copay', dollars: 28 }, standardMail: { kind: 'copay', dollars: 30 } }, over && over['1'] || {}),
+      '2': over && over['2'] || { preferredMail: { kind: 'copay', dollars: 84 }, standardMail: { kind: 'copay', dollars: 90 }, preferredRetail: { kind: 'copay', dollars: 15 } } } } } } } });
+const oneDrug = [['d1', { label: 'DrugOne' }]];
+
+t('a preferred-retail switch is its own action, with true dollars, from a STANDARD-local baseline', () => {
+  const a = F.actionPlan(prefPlan(), oneDrug, { where: 'local', days: '1' });
+  assert.strictEqual(a.moves.length, 0, 'mail is not the winning lever here');
+  assert.strictEqual(a.switches.length, 1, 'the preferred switch fires');
+  const s = a.switches[0];
+  assert.strictEqual(s.channel, 'preferredRetail');
+  assert.strictEqual(s.current, 360);          // 30 * 12
+  assert.strictEqual(s.to, 60);                // 5 * 12
+  assert.strictEqual(s.saving, 300);           // 360 - 60
+  assert.strictEqual(a.switchSaving, 300);
+  assert.strictEqual(a.allClear, false, 'an action fired → not all-clear');
+});
+
+t('baseline honesty: if she already fills at a PREFERRED pharmacy, the switch does not fire', () => {
+  const a = F.actionPlan(prefPlan(), oneDrug, { where: 'preferred', days: '1' });
+  assert.strictEqual(a.switches.length, 0, 'she is already at that price — no invented saving');
+  assert.strictEqual(a.baseline.channel, 'preferredRetail');
+  assert.strictEqual(a.baselineAssumed, false, 'she told us; we do not hedge');
+  assert.strictEqual(a.keep.length, 1, 'the drug is kept, already best');
+});
+
+t('mail vs preferred on ONE drug: larger saving wins, the other is a runner-up clause (never 2 actions)', () => {
+  // mail 90-day $12/yr beats preferred $60/yr → mail wins; preferred is the runner-up
+  const mailBest = prefPlan({ '2': { preferredMail: { kind: 'copay', dollars: 3 }, standardMail: { kind: 'copay', dollars: 3 }, preferredRetail: { kind: 'copay', dollars: 15 } } });
+  const a = F.actionPlan(mailBest, oneDrug, { where: 'local', days: '1' });
+  assert.strictEqual(a.moves.length, 1, 'mail is the winning action');
+  assert.strictEqual(a.switches.length, 0, 'NOT a second competing action for the same drug');
+  assert.ok(a.moves[0].runnerUp, 'the preferred lever is carried as a runner-up');
+  assert.strictEqual(a.moves[0].runnerUp.channel, 'switch');
+  assert.ok(a.moves[0].runnerUp.saving >= 25, 'and it too clears the floor');
+});
+
+t('nextStep priority is exception > mail move > preferred switch > compare > nothing', () => {
+  // only a preferred switch available → 'switch'
+  const a = F.actionPlan(prefPlan(), oneDrug, { where: 'local', days: '1' });
+  assert.strictEqual(F.nextStep(a, { nowhere: [], elsewhere: [] }).kind, 'switch');
+  // a mail move present too → mail outranks switch
+  const both = prefPlan({ '2': { preferredMail: { kind: 'copay', dollars: 3 }, standardMail: { kind: 'copay', dollars: 3 }, preferredRetail: { kind: 'copay', dollars: 5 } } });
+  const a2 = F.actionPlan(both, oneDrug, { where: 'local', days: '1' });
+  assert.strictEqual(F.nextStep(a2, { nowhere: [], elsewhere: [] }).kind, 'move');
+});
+
+t('scorecard counts the switch drug (it needs attention, and the counts must sum to the basket)', () => {
+  // 20 MG is a switch (could pay less), 60 MG is keep — reviewed must be 2, not 1.
+  const two = require('./ux/fixtures/results-preferred-switch.json');
+  const F2 = require('../site/format.js');
+  const you = F2.groupPlans(two.plans, { planId: 'H2041-001' }).yourPlan;
+  const dl = [['596934', { label: 'duloxetine 60 MG' }], ['596926', { label: 'duloxetine 20 MG' }]];
+  const a = F2.actionPlan(you, dl, { where: 'local', days: '1' });
+  const sc = F2.checkupScorecard(a);
+  assert.strictEqual(sc.reviewed, 2, 'both drugs are counted (the switch drug is not dropped)');
+  assert.strictEqual(sc.attention, 1, 'the switch drug needs attention');
+  assert.strictEqual(sc.best, 1, 'the keep drug is at best price');
+  assert.strictEqual(sc.best + sc.attention + sc.coinsurance, sc.reviewed, 'MECE holds');
+});
+
+t('allClear is earned ONLY when no action of ANY kind fires (mail OR preferred)', () => {
+  // a drug already cheapest at her baseline everywhere → all clear
+  const flat = { planId: 'F', planName: 'F', planType: 'MA-PD', premium: 0, deductible: 0, notCovered: 0,
+    drugs: { d1: { covered: true, tier: 1, flags: {}, headline: { kind: 'copay', dollars: 5 }, appliedOverrides: [],
+      phases: { '1': { byDaysSupply: { '1': { standardRetail: { kind: 'copay', dollars: 5 }, preferredRetail: { kind: 'copay', dollars: 5 }, preferredMail: { kind: 'copay', dollars: 5 } } } } } } } };
+  assert.strictEqual(F.actionPlan(flat, oneDrug, { where: 'local', days: '1' }).allClear, true);
+  // but the preferred-switch plan is NOT all-clear
+  assert.strictEqual(F.actionPlan(prefPlan(), oneDrug, { where: 'local', days: '1' }).allClear, false);
+});
+
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

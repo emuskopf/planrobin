@@ -194,15 +194,30 @@
     // cheapest option" would be a lie of omission. Name it, then hand off to the section that deals
     // with it. This line OUTRANKS the good-news verdict; it is never printed alongside it.
     actionNotCovered: (a) => `${nameList(a.notCovered)} ${a.notCovered.length === 1 ? 'isn’t' : 'aren’t'} covered by your plan, so there’s no pharmacy price for ${a.notCovered.length === 1 ? 'it' : 'them'} to improve — see “${FAIR_HEADING}” below.`,
+    // The runner-up lever, in one clause (never a second competing action). "mail is cheapest; a
+    // preferred pharmacy also beats your counter" — the spec's exact shape.
+    runnerUpClause: (m) => {
+      if (!m.runnerUp) return '';
+      return m.runnerUp.channel === 'mail'
+        ? ` (Mail order saves even more — about ${PRFormat.dollars(m.runnerUp.saving)}/yr — if you’re open to it.)`
+        : ` (A preferred pharmacy also beats your counter, about ${PRFormat.dollars(m.runnerUp.saving)}/yr.)`;
+    },
     moveHead: (a) => {
       const n = a.moves.length;
       const verb = a.baseline.where === 'mail'
         ? `Switch ${n === 1 ? 'this one' : 'these ' + n} to ${DAYS_WORD[a.moves[0].days]} fills by mail`
         : `Send ${n === 1 ? 'this one' : 'these ' + n} to mail order`;
-      return `${verb} — saving about ${PRFormat.dollars(a.saving)}/yr`;
+      return `${verb} — saving about ${PRFormat.dollars(a.moveSaving)}/yr`;
     },
-    moveLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, about ${PRFormat.dollars(m.to)}/yr as a ${DAYS_WORD[m.days]} fill by mail. Saving about ${PRFormat.dollars(m.saving)}/yr.`,
-    // The "how" (the exact words to say) lives in Questions to ask now (v2) — see moveQuestion below.
+    moveLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, about ${PRFormat.dollars(m.to)}/yr as a ${DAYS_WORD[m.days]} fill by mail. Saving about ${PRFormat.dollars(m.saving)}/yr.` + checkupCopy.runnerUpClause(m),
+    // Preferred-pharmacy switch — a location change, same days-supply. Named pharmacies arrive with
+    // Pharmacy Network V2; until then we say "your plan's preferred pharmacies", never a specific name.
+    switchHead: (a) => {
+      const n = a.switches.length;
+      return `Fill ${n === 1 ? 'this one' : 'these ' + n} at one of your plan’s preferred pharmacies — saving about ${PRFormat.dollars(a.switchSaving)}/yr`;
+    },
+    switchLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, about ${PRFormat.dollars(m.to)}/yr at a preferred pharmacy. Saving about ${PRFormat.dollars(m.saving)}/yr.` + checkupCopy.runnerUpClause(m),
+    // The "how" (the exact words to say) lives in Questions to ask now (v2) — see moveQuestion/switchQuestion.
     // Small, reversible, losing nothing (CONTENT-RULES 15) — this stays with the action detail.
     reassure: 'This is a split, not a switch: you keep the same plan and the same pharmacy for anything else — your pharmacist stays yours. You can change back at any time.',
     keepHead: 'Keep filling these where you do',
@@ -210,10 +225,14 @@
     // Never modelled: say plainly what we can't compare and why (rule 6 + trade-off honesty).
     cant: (a) => `We can’t compare pharmacies for ${nameList(a.cant)} — ${a.cant.length === 1 ? 'it’s' : 'they’re'} priced as coinsurance, which depends on the drug’s price and how much you take. Your plan’s member line can quote it.`,
     // The baseline we measured from — including the assumption that could make a saving too big.
-    baseline: (a) => `Measured against ${DAYS_WORD[a.baseline.days]} fills ${a.baseline.where === 'mail' ? 'by mail' : 'at a local pharmacy'}`
-      + (a.baselineAssumed
-        ? ' at a standard (non-preferred) pharmacy. If yours is one of your plan’s preferred pharmacies you may already pay less than we’ve shown, which would make the saving smaller.'
-        : '.'),
+    baseline: (a) => {
+      const w = a.baseline.where;
+      const wLabel = w === 'mail' ? 'by mail' : w === 'preferred' ? 'at one of your plan’s preferred pharmacies' : 'at a local pharmacy';
+      return `Measured against ${DAYS_WORD[a.baseline.days]} fills ${wLabel}`
+        + (a.baselineAssumed
+          ? ' at a standard (non-preferred) pharmacy. If yours is one of your plan’s preferred pharmacies you may already pay less than we’ve shown, which would make the saving smaller.'
+          : '.');
+    },
     fairHeading: FAIR_HEADING,
     // v2: the not-covered story is told by wouldSwitchingFix + the exception path (below); the old
     // fairNotCovered* / fairNoWhereToSwitch builders are superseded and removed.
@@ -280,6 +299,9 @@
     calleeLabel: { doctor: 'Ask your doctor', plan: 'Ask your plan (number on your card)', ship: 'Ask a SHIP counselor (free, unbiased)' },
     // the mail-order move, reframed as the plain sentence to say to the plan
     moveQuestion: 'I’d like to move my prescriptions to your mail-order pharmacy. What do you need from me?',
+    // Preferred-pharmacy switch how-to: the plan's own directory / the number on the card. No named
+    // pharmacies (that's Pharmacy Network V2) — she asks the plan which of hers are preferred.
+    switchQuestion: 'Which pharmacies near me are “preferred” on my plan? I’d like to fill at one to pay less.',
     // SHIP is the general, free helper — no exception mention here (that lives with the doctor/plan
     // questions, and only when there's actually a gap), so this never dangles "exception" for someone
     // whose plan already covers everything.
@@ -290,6 +312,7 @@
     nextStepText: (step) => {
       if (step.kind === 'exception') return `Ask your doctor about a formulary exception for ${nameList(step.drugs)} — it’s the process for a drug your plan doesn’t cover.`;
       if (step.kind === 'move') return `Move ${step.n === 1 ? 'your prescription' : 'these ' + step.n + ' prescriptions'} to mail order — about ${PRFormat.dollars(step.saving)}/yr saved, same plan, same pharmacy for everything else.`;
+      if (step.kind === 'switch') return `Fill ${step.n === 1 ? 'your prescription' : 'these ' + step.n + ' prescriptions'} at one of your plan’s preferred pharmacies — about ${PRFormat.dollars(step.saving)}/yr saved, same plan, same drug.`;
       // A gap OTHER plans cover: NOT "nothing to change" (that would be false reassurance) — the honest
       // step is to compare, because switching is the way to get it covered.
       if (step.kind === 'compare') return `Worth comparing plans — ${nameList(step.drugs)} ${step.drugs.length === 1 ? 'isn’t' : 'aren’t'} covered on your plan, but other plans in your county cover ${step.drugs.length === 1 ? 'it' : 'them'}.`;
@@ -363,13 +386,18 @@
         for (const m of a.moves) items.push({ type: 'bullet', text: checkupCopy.moveLine(m) });
         items.push({ type: 'note', text: checkupCopy.reassure });
       }
+      // Preferred-pharmacy switch — its own grouped action (never mixed with the mail move).
+      if (a.switches.length) {
+        items.push({ type: 'h3', text: checkupCopy.switchHead(a) });
+        for (const m of a.switches) items.push({ type: 'bullet', text: checkupCopy.switchLine(m) });
+      }
       if (a.keep.length) {
         items.push({ type: 'h3', text: checkupCopy.keepHead });
         items.push({ type: 'note', text: checkupCopy.keepBody(a) });
       }
       if (a.cant.length) items.push({ type: 'fine', text: checkupCopy.cant(a) });
     }
-    if (a.moves.length || a.keep.length) items.push({ type: 'fine', text: checkupCopy.baseline(a) });
+    if (a.moves.length || a.switches.length || a.keep.length) items.push({ type: 'fine', text: checkupCopy.baseline(a) });
 
     // 5 — WORTH KNOWING: the computed "would switching fix this" fact, then the right remedy —
     //   nowhere gap   → the formulary exception path (switching can't help)
@@ -394,6 +422,7 @@
     const qDoctor = [], qPlan = [];
     if (split.nowhere.length) { qDoctor.push(checkupCopy.exceptionDoctorQ(split)); qPlan.push(checkupCopy.exceptionPlanQ); }
     if (a.moves.length) qPlan.push(checkupCopy.moveQuestion);
+    if (a.switches.length) qPlan.push(checkupCopy.switchQuestion);
     if (perksUnknown) for (const q of checkupCopy.perksQuestions) qPlan.push(q);
     if (qDoctor.length || qPlan.length) {
       items.push({ type: 'h', text: checkupCopy.questionsHeading });
