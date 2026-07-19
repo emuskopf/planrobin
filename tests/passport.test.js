@@ -159,14 +159,13 @@ t('the headline mirrors how she told us: typed = "Your plan", picked = "The plan
   assert.ok(P.passportStrings(ckModel({ planIdSource: null })).includes('Your plan'));
 });
 
-t('the action plan prints the words to say — a recommendation without its action is incomplete', () => {
+t('the action plan gives its action — a recommendation without its action is incomplete (v2: in Questions)', () => {
   const s = P.passportStrings(ckModel());
   const C = P.checkupCopy;
   const hasMove = s.some((x) => /saving about \$/.test(x));
   if (hasMove) {
-    assert.ok(s.includes(C.howHead), 'the how-to lead-in');
-    assert.ok(s.includes(C.script), 'the mail-order script, verbatim');
-    assert.ok(s.includes(C.reassure), 'and that it is reversible');
+    assert.ok(s.includes(C.reassure), 'the move is reversible (stays with the action detail)');
+    assert.ok(s.includes(C.moveQuestion), 'and the exact words to say live in Questions to ask (v2)');
   } else {
     assert.ok(s.includes(C.doNothing), 'or the do-nothing verdict is printed as an answer');
   }
@@ -179,12 +178,12 @@ t('screen and sheet cannot word it differently — both render from checkupCopy'
   // future session edits the verdict on screen, it edits this string, and the sheet changes with it.
   const C = P.checkupCopy;
   assert.strictEqual(typeof C.doNothing, 'string');
-  assert.strictEqual(typeof C.script, 'string');
+  assert.strictEqual(typeof C.moveQuestion, 'string');
   assert.strictEqual(typeof C.baseline, 'function');
   const src = require('fs').readFileSync(require('path').join(__dirname, '../site/checkup.js'), 'utf8');
   // checkup.js renders prose ONLY through the shared builders. If you're adding a sentence to the
   // screen, add it to checkupCopy — otherwise the printed sheet silently disagrees with the page.
-  for (const sentence of [C.doNothing, C.script, C.reassure, C.fairStayPut, C.perksLead]) {
+  for (const sentence of [C.doNothing, C.reassure, C.fairStayPut, C.moveQuestion, C.exceptionPlanQ, C.shipQuestion]) {
     assert.ok(!src.includes(sentence.slice(0, 40)), 'checkup.js must not re-author: ' + sentence.slice(0, 40));
   }
 });
@@ -198,16 +197,42 @@ t('fair-price fires on paper exactly when it fires on screen — and stays silen
   assert.strictEqual(printed, fp.fires, `sheet ${printed ? 'prints' : 'omits'} but engine says ${fp.fires}`);
 });
 
-t('perks print only when she said she doesn’t know (and never enumerate a perk we don’t have)', () => {
+t('v2: perks questions ride in "Ask your plan" only when she said she doesn’t know', () => {
   const C = P.checkupCopy;
-  assert.ok(P.passportStrings(ckModel({ perks: 'unsure' })).includes(C.perksHeading));
-  assert.ok(P.passportStrings(ckModel({ perks: 'no' })).includes(C.perksHeading));
-  assert.ok(!P.passportStrings(ckModel({ perks: 'yes' })).includes(C.perksHeading));
-  assert.ok(!P.passportStrings(ckModel({ perks: null })).includes(C.perksHeading));
-  // it points at where the real answer lives; it never claims to know her benefits
+  const perkQ = C.perksQuestions[0];
+  assert.ok(P.passportStrings(ckModel({ perks: 'unsure' })).includes(perkQ), 'unsure → the perks asks appear');
+  assert.ok(P.passportStrings(ckModel({ perks: 'no' })).includes(perkQ), 'no → they appear');
+  assert.ok(!P.passportStrings(ckModel({ perks: 'yes' })).includes(perkQ), 'yes → absent');
+  assert.ok(!P.passportStrings(ckModel({ perks: null })).includes(perkQ), 'unanswered → absent');
+  // they sit under the plan callee label, and the ANOC/EOC pointer still appears — never inventing a perk
   const s = P.passportStrings(ckModel({ perks: 'unsure' }));
-  assert.ok(s.some((x) => /We don’t have benefits data, so we won’t guess at yours/.test(x)), 'says plainly that we do not know');
+  assert.ok(s.includes(C.calleeLabel.plan), 'grouped under "Ask your plan"');
   assert.ok(s.some((x) => /Annual Notice of Change/.test(x)), 'and points at the document that does');
+});
+
+t('v2: scorecard is counted-not-graded, and every gap/step traces to a computed rule', () => {
+  const C = P.checkupCopy;
+  const s = P.passportStrings(ckModel());
+  // the scorecard header states counts, never a single-word verdict (#13)
+  assert.ok(s.some((x) => /^\d+ of \d+ medications? covered at your best price/.test(x)), 'counted header: ' + s.find((x) => /covered at your best price/.test(x)));
+  assert.ok(!s.some((x) => /\b(GOOD|FAIR|POOR|EXCELLENT)\b/.test(x)), 'no graded verdict word');
+  // the next step is present and is one of the fixed kinds
+  assert.ok(s.includes(C.nextStepHeading), 'the next-step heading');
+});
+
+t('v2: the formulary-exception path fires ONLY when NO county plan covers the drug', () => {
+  const C = P.checkupCopy;
+  const F = require('../site/format.js');
+  // partial-gap fixture: one drug covered, one off-formulary on EVERY plan → nowhere → exception
+  const gap = require('./ux/fixtures/results-partial-gap.json');
+  const gs = P.passportStrings(P.checkupModel(gap, drugs, Object.assign({}, CK, { now: NOW })));
+  assert.ok(gs.some((x) => /formulary exception/.test(x)), 'exception path present for a nowhere drug');
+  assert.ok(gs.some((x) => /Can you request a formulary exception/.test(x)), 'the doctor question');
+  assert.ok(gs.some((x) => /Would switching plans fix this\? No/.test(x)), 'and the honest switching fact');
+
+  // two-roads fixture: her plan covers everything → NO gap → no exception anywhere
+  const ok = P.passportStrings(ckModel());
+  assert.ok(!ok.some((x) => /formulary exception/.test(x)), 'no exception path when nothing is a gap');
 });
 
 t('the season line is computed from the window on HER clock, never baked in', () => {
@@ -259,22 +284,16 @@ t('REGRESSION: a plan covering nothing she takes never gets the good-news verdic
   assert.ok(!s.some((x) => /^Measured against/.test(x)), 'no baseline note when nothing was measured');
 });
 
-t('REGRESSION: not-covered fires even when NO other plan covers everything either', () => {
-  const F = require('../site/format.js');
+t('REGRESSION (v2): a plan covering nothing, with nowhere to switch, gets the exception path — not false calm', () => {
   const zero = require('./ux/fixtures/results-zero.json');
-  const group = F.groupPlans(zero.plans, { road: null, planId: CK.planId });
-  const fp = F.fairPriceCheck(group);
-  assert.strictEqual(fp.fires, true, 'a gap is worth knowing at any price, and with nowhere to go');
-  assert.strictEqual(fp.reason, 'not-covered');
-  assert.strictEqual(fp.n, 0, 'no alternative covers everything in this fixture');
-  // and the copy says that plainly instead of printing "0 other plans cover everything"
-  const line = P.checkupCopy.fairNotCoveredOthers(fp);
-  assert.ok(/^No other .*plan in your county covers everything on your list either/.test(line), line);
-  assert.ok(!/^0 other/.test(line), 'never "0 other plans"');
-  // with nowhere to switch, the next step is a person — not "staying put is a perfectly good choice"
   const s = P.passportStrings(P.checkupModel(zero, drugs, Object.assign({}, CK, { now: NOW })));
-  assert.ok(!s.includes(P.checkupCopy.fairStayPut), 'no "staying put" advice when there is nowhere to go');
-  assert.ok(s.includes(P.checkupCopy.fairNoWhereToSwitch), 'points at the exception process + SHIP');
+  assert.ok(!s.includes(P.checkupCopy.doNothing), 'no false good-news verdict');
+  assert.ok(!s.includes(P.checkupCopy.fairStayPut), 'no "staying put is fine" when there is nowhere to go');
+  // the honest switching fact + the real remedy (a person + a process), never "0 other plans"
+  assert.ok(s.some((x) => /Would switching plans fix this\? No/.test(x)), 'the honest switching fact');
+  assert.ok(!s.some((x) => /^0 other|0 plans/.test(x)), 'never "0 other plans"');
+  assert.ok(s.some((x) => /formulary exception/.test(x)), 'points at the exception process');
+  assert.ok(s.some((x) => /Can you request a formulary exception/.test(x)), 'with the doctor question to ask');
 });
 
 t('allClear is the verdict’s gate: earned only when every drug was actually checkable', () => {

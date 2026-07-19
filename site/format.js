@@ -431,10 +431,84 @@
   const YOURS_LABEL = { typed: 'Your plan', picked: 'The plan you selected' };
   function yoursLabel(source) { return YOURS_LABEL[source] || YOURS_LABEL.typed; }
 
+  // ---- Checkup v2 engine: county-wide coverage, the exception split, the scorecard --------------
+  // All computed from the SAME data the picker uses (data.plans = every plan in her county), so the
+  // exception path and the "would switching fix this" fact trace to a published cell, never a guess.
+
+  // For each basket drug, how many plans IN HER COUNTY cover it at all (any tier). This is the fact
+  // the exception path turns on: a drug covered by ZERO county plans can't be gotten by switching.
+  function countyDrugCoverage(plans, drugs) {
+    const out = {};
+    for (const entry of (drugs || [])) {
+      const rx = entry[0];
+      let n = 0;
+      for (const p of (plans || [])) if (p.drugs && p.drugs[rx] && p.drugs[rx].covered) n++;
+      out[rx] = n;
+    }
+    return out; // { rxcui: number-of-county-plans-covering-it }
+  }
+
+  // Split the drugs HER plan misses into two buckets, because they have opposite remedies:
+  //   • nowhere   — no plan in the county covers it → switching CAN'T fix it → the exception path
+  //   • elsewhere — some county plan covers it     → switching COULD fix it → the comparison path
+  // The exception line must fire ONLY for `nowhere` (spec item 1: never where switching would fix it).
+  function exceptionSplit(plans, yourPlan, drugs) {
+    const county = countyDrugCoverage(plans, drugs);
+    const nowhere = [], elsewhere = [];
+    for (const entry of (drugs || [])) {
+      const rx = entry[0], label = (entry[1] || {}).label || rx;
+      const yours = yourPlan && yourPlan.drugs && yourPlan.drugs[rx] && yourPlan.drugs[rx].covered;
+      if (yours) continue;                              // her plan covers it — not a gap
+      if (county[rx] > 0) elsewhere.push({ rxcui: rx, label, plansCovering: county[rx] });
+      else nowhere.push({ rxcui: rx, label });
+    }
+    return { nowhere, elsewhere };
+  }
+
+  // Counted, never graded (spec item 2 + UX-REVIEW #13). Buckets are MECE over the basket, each with a
+  // stated reason, so reviewed = best + attention + coinsurance always holds:
+  //   • best        — covered AND confirmed already at her cheapest channel (actionPlan.keep)
+  //   • attention   — a gap (not covered) OR a cheaper option exists (actionPlan.moves)
+  //   • coinsurance — covered but priced as coinsurance, so we can't confirm best price (actionPlan.cant)
+  // NO single-word verdict — the header states the counts and lets her read them.
+  function checkupScorecard(a) {
+    const attention = a.notCovered.length + a.moves.length;
+    const best = a.keep.length;
+    const coinsurance = a.cant.length;
+    return { reviewed: attention + best + coinsurance, best, attention, coinsurance };
+  }
+
+  // The single next action, chosen by the spec's fixed priority (item 3). Sourced from the action
+  // plan's top item + the exception split — one named thing to do, before any detail. Note: "preferred
+  // switch" is in the spec's priority list but actionPlan currently searches mail channels only, so it
+  // is never produced here yet (flagged, not invented).
+  function nextStep(a, split) {
+    if (split && split.nowhere.length) return { kind: 'exception', drugs: split.nowhere };
+    if (a.moves.length) return { kind: 'move', saving: a.saving, days: a.moves[0].days, n: a.moves.length, drugs: a.moves };
+    return { kind: 'nothing' };
+  }
+
+  // Good news — ONLY computed-true bullets, each traceable to a cell or a check that ran (spec item 5).
+  // Returns [] when there's nothing verifiable to say; the caller renders NO section rather than pad
+  // one. `fp` is the fairPriceCheck result; `floor` is the same floor it used.
+  function goodNewsBullets(plan, a, fp, floorArg) {
+    const floor = floorArg == null ? FAIR_PRICE_FLOOR_UNTUNED : floorArg;
+    const out = [];
+    // per-drug: each covered drug already at its cheapest channel, with the figure she can verify
+    for (const k of a.keep) out.push({ kind: 'best-price', rxcui: k.rxcui, label: k.label, annual: k.annual });
+    // the deductible skips her covered drugs (only when actually true — the #13 guard lives in the note)
+    const ded = deductibleExemptNote(plan);
+    if (ded) out.push({ kind: 'deductible', text: ded.text });
+    // the comparison check RAN and found nothing cheaper past the floor — stated as what ran, not as a grade
+    if (fp && fp.reason === 'below-floor') out.push({ kind: 'compared', floor });
+    return out;
+  }
+
   const api = { round, dollars, planDisplayTotal, savingsCopy, planCoverage, planRank, ambiguousPlanIds, planDisplayId, phaseSummary, capPhrase, isMaPd, premiumLabel, yoursLabel, deductibleExemptNote,
     roadOf, isKnownRoad, groupPlans, resultsCountLine, roadsMix, ROAD_NOUN,
     normalizePlanId, isPlanIdShape, isPlanIdPrefix, HEADLINE_BASIS, headlineAnnual,
-    inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED, actionPlan };
+    inAep, seasonLine, fairPriceCheck, FAIR_PRICE_FLOOR_UNTUNED, actionPlan,
+    countyDrugCoverage, exceptionSplit, checkupScorecard, nextStep, goodNewsBullets };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else global.PRFormat = api;
 })(typeof window !== 'undefined' ? window : globalThis);

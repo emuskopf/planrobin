@@ -122,30 +122,144 @@ function renderCheckup(data) {
   }
 
   const you = group.yourPlan;
-  // 1 — HEADLINE: her plan, her total, premium given the prominence she asked for out loud. The badge
-  // mirrors how she told us: typed off the card = "Your plan"; picked from the list = "The plan you
-  // selected". One conditional, one shared vocabulary (PRFormat.yoursLabel) — the sheet says it too.
-  box.append(renderPlan(you, { yours: true, premiumProminent: true, yoursLabel: PRFormat.yoursLabel(state.planIdSource) }));
-  // 2 — ACTION PLAN
-  box.append(renderActionPlan(you));
-  // 3 — FAIR-PRICE CHECK
+  // v2 — computed ONCE here, mirroring checkupModel exactly (screen and sheet read the same rules).
+  const a = PRFormat.actionPlan(you, [...state.drugs], state.fill);
+  const split = PRFormat.exceptionSplit(data.plans, you, [...state.drugs]);
   const fp = PRFormat.fairPriceCheck(group);
-  const fpNode = renderFairPrice(fp, data);
-  if (fpNode) box.append(fpNode);
-  // 4 — PERKS (only when she said she doesn't know)
-  if (state.perks === 'no' || state.perks === 'unsure') box.append(renderPerks());
-  // 5 — CAPTURE BRIDGE
+  const sc = PRFormat.checkupScorecard(a);
+  const step = PRFormat.nextStep(a, split);
+  const good = PRFormat.goodNewsBullets(you, a, fp, fp.floor);
+  const ctx = { data, you, a, split, fp, sc, step, good, group };
+
+  // 1 — SCORECARD (counted, never graded): the whole checkup at a glance, first.
+  box.append(renderScorecard(sc));
+  // 2 — NEXT STEP: one named action, before any detail.
+  box.append(renderNextStep(step));
+  // 3 — her plan (badge mirrors how she told us it was hers — typed vs picked).
+  box.append(renderPlan(you, { yours: true, premiumProminent: true, yoursLabel: PRFormat.yoursLabel(state.planIdSource) }));
+  // 4 — WHAT YOU CAN DO: the action detail (dollars); the "how" moves to Questions to ask.
+  box.append(renderActionPlan(you, a));
+  // 5 — WORTH KNOWING: would-switching-fix + the right remedy (exception path or compare).
+  const wk = renderWorthKnowing(ctx);
+  if (wk) box.append(wk);
+  // 6 — QUESTIONS TO ASK, grouped by callee — the standard action format.
+  const q = renderQuestions(ctx);
+  if (q) box.append(q);
+  // 7 — GOOD NEWS: computed-true bullets only; absent when there's nothing verifiable.
+  if (good.length) box.append(renderGoodNews(good));
+  // 8 — CAPTURE BRIDGE
   box.append(renderBridge());
-  // 6 — the passport (page 2 unchanged): the same share bar the comparison uses.
+  // 9 — the passport share bar (page 2 unchanged).
   box.append(renderShareBar(data));
+}
+
+// ---------- 1. scorecard (counted, never graded — UX-REVIEW #13) ----------
+function renderScorecard(sc) {
+  const C = COPY();
+  const wrap = el('section', { className: 'card scorecard' });
+  wrap.append(el('h2', { textContent: C.scorecardHeading }));
+  // The header sentence carries the meaning (parity with the sheet); the stat chips are visual echo.
+  wrap.append(el('p', { className: 'sc-line', textContent: C.scorecardHeader(sc) }));
+  const stats = el('div', { className: 'sc-stats', 'aria-hidden': 'true' });
+  const stat = (n, label, cls) => el('div', { className: 'sc-stat' + (cls ? ' ' + cls : '') }, [
+    el('span', { className: 'sc-num', textContent: String(n) }), el('span', { className: 'sc-lbl', textContent: label })]);
+  stats.append(stat(sc.reviewed, C.scorecardStat.reviewed));
+  stats.append(stat(sc.best, C.scorecardStat.best, 'sc-good'));
+  if (sc.attention) stats.append(stat(sc.attention, C.scorecardStat.attention, 'sc-attn'));
+  wrap.append(stats);
+  return wrap;
+}
+
+// ---------- 2. next step (one named action, first) ----------
+function renderNextStep(step) {
+  const C = COPY();
+  const wrap = el('section', { className: 'card nextstep' + (step.kind === 'exception' ? ' nextstep-attn' : '') });
+  wrap.append(el('h2', { className: 'ns-h', textContent: C.nextStepHeading }));
+  const icon = step.kind === 'nothing' ? 'check' : 'arrow';
+  wrap.append(el('p', { className: 'ns-body' }, [ic(icon === 'arrow' ? 'save' : 'check'), el('span', { textContent: C.nextStepText(step) })]));
+  return wrap;
+}
+
+// ---------- 5. worth knowing (would-switching-fix + exception path or compare) ----------
+function renderWorthKnowing(ctx) {
+  const C = COPY();
+  const { data, split, fp } = ctx;
+  const hasGap = split.nowhere.length || split.elsewhere.length;
+  if (!hasGap && fp.reason !== 'cheaper') return null;
+  const wrap = el('section', { className: 'card worth-knowing', role: 'note' });
+  wrap.append(el('h2', { textContent: C.fairHeading }));
+  const would = C.wouldSwitchingFix(split, data.county.name);
+  if (would) wrap.append(el('p', { className: 'wk-switch', textContent: would }));
+  if (split.nowhere.length) {
+    wrap.append(el('div', { className: 'wk-exception' }, [ic('cross'), el('span', { textContent: C.exceptionLead(split, data.county.name) })]));
+  }
+  if (fp.reason === 'cheaper') wrap.append(el('p', { className: 'wk-cheaper', textContent: C.fairCheaper(fp) }));
+  const season = PRFormat.seasonLine(state.checkupMeta, new Date());
+  if (fp.n > 0 && (split.elsewhere.length || fp.reason === 'cheaper')) {
+    wrap.append(el('p', { textContent: C.fairStayPut }));
+    const cta = el('p', {}, [
+      document.createTextNode('If you’d like to compare, '),
+      el('a', { href: '/', textContent: 'here’s the full list' }),
+      document.createTextNode('.'),
+    ]);
+    if (season) cta.append(document.createTextNode(` (${season}.)`));
+    wrap.append(cta);
+  }
+  return wrap;
+}
+
+// ---------- 6. questions to ask, grouped by callee ----------
+function renderQuestions(ctx) {
+  const C = COPY();
+  const { a, split } = ctx;
+  const perksUnknown = state.perks === 'no' || state.perks === 'unsure';
+  const qDoctor = [], qPlan = [];
+  if (split.nowhere.length) { qDoctor.push(C.exceptionDoctorQ(split)); qPlan.push(C.exceptionPlanQ); }
+  if (a.moves.length) qPlan.push(C.moveQuestion);
+  if (perksUnknown) for (const q of C.perksQuestions) qPlan.push(q);
+  if (!qDoctor.length && !qPlan.length) return null;
+  const wrap = el('section', { className: 'card questions' });
+  wrap.append(el('h2', { textContent: C.questionsHeading }));
+  const group = (callee, label, qs) => {
+    if (!qs.length) return;
+    const g = el('div', { className: 'q-group q-' + callee });
+    g.append(el('h3', { className: 'q-label', textContent: label }));
+    const ol = el('ul', { className: 'q-list' });
+    for (const q of qs) ol.append(el('li', { className: 'q-item' }, el('blockquote', { className: 'action-script', textContent: q })));
+    g.append(ol); wrap.append(g);
+  };
+  group('doctor', C.calleeLabel.doctor, qDoctor);
+  group('plan', C.calleeLabel.plan, qPlan);
+  group('ship', C.calleeLabel.ship, [C.shipQuestion]);
+  if (perksUnknown) {
+    wrap.append(el('p', { className: 'fine muted' }, [
+      document.createTextNode('Benefits are also in your plan’s Annual Notice of Change (ANOC) or Evidence of Coverage, and on your plan’s page at '),
+      el('a', { href: 'https://www.medicare.gov/plan-compare', rel: 'noopener', target: '_blank', textContent: 'Medicare.gov' }),
+      document.createTextNode('. A '),
+      el('a', { href: 'https://www.shiphelp.org', rel: 'noopener', target: '_blank', textContent: 'SHIP counselor' }),
+      document.createTextNode(' can read it with you, free.'),
+    ]));
+  }
+  return wrap;
+}
+
+// ---------- 7. good news (computed-true bullets only) ----------
+function renderGoodNews(good) {
+  const C = COPY();
+  const wrap = el('section', { className: 'card good-news' });
+  wrap.append(el('h2', {}, [ic('check'), document.createTextNode(' ' + C.goodNewsHeading)]));
+  const ul = el('ul', { className: 'gn-list' });
+  for (const b of good) ul.append(el('li', { className: 'gn-item', textContent: C.goodNewsBullet(b) }));
+  wrap.append(ul);
+  return wrap;
 }
 
 // ---------- 2. the action plan ----------
 const COPY = () => PRPassport.checkupCopy;   // the shared sentences (screen + printed sheet)
 
-function renderActionPlan(plan) {
+function renderActionPlan(plan, a) {
   const C = COPY();
-  const a = PRFormat.actionPlan(plan, [...state.drugs], state.fill);
+  a = a || PRFormat.actionPlan(plan, [...state.drugs], state.fill);
   const wrap = el('section', { className: 'card action-plan' });
   wrap.append(el('h2', { textContent: C.actionHeading }));
 
@@ -178,8 +292,7 @@ function renderActionPlan(plan) {
       ul.append(li);
     }
     act.append(ul);
-    act.append(el('p', { className: 'action-how-head', textContent: C.howHead }));
-    act.append(el('blockquote', { className: 'action-script', textContent: C.script }));
+    // The "how" (the words to say) now lives in Questions to ask, so it isn't repeated here.
     act.append(el('p', { className: 'action-reassure', textContent: C.reassure }));
     wrap.append(act);
   }
@@ -201,70 +314,7 @@ function renderBaselineNote(a) {
   return el('p', { className: 'fine muted action-baseline', textContent: COPY().baseline(a) });
 }
 
-// ---------- 3. the fair-price check ----------
-function renderFairPrice(fp, data) {
-  if (!fp.fires) return null;                       // silence is a designed outcome, not an omission
-  const C = COPY();
-  const wrap = el('section', { className: 'card fair-price', role: 'note' });
-  // Computed on HER clock: a precomputed boolean would go stale in the edge cache across October 15.
-  const season = PRFormat.seasonLine(state.checkupMeta, new Date());
-  wrap.append(el('h2', { textContent: C.fairHeading }));
-
-  if (fp.reason === 'not-covered') {
-    const missing = fp.yourCoverage.missing.map((rx) => (state.drugs.get(rx) || {}).label || rx).join(', ');
-    wrap.append(el('div', { className: 'fp-lead' }, [ic('cross'), el('span', { textContent: C.fairNotCoveredLead(fp, missing) })]));
-    wrap.append(el('p', { textContent: C.fairNotCoveredOthers(fp) }));
-  } else {
-    wrap.append(el('p', { className: 'fp-lead-text', textContent: C.fairCheaper(fp) }));
-  }
-
-  // "Staying put is a perfectly good choice" only makes sense when there's somewhere to go. With no
-  // alternative that covers everything, the honest next step is a person, not a plan switch.
-  if (fp.n > 0) {
-    wrap.append(el('p', { textContent: C.fairStayPut }));
-    // Screen-only shape: the sheet can't be tapped, so the model prints the address (fairComparePaper).
-    const cta = el('p', {}, [
-      document.createTextNode('If you’d like to compare, '),
-      el('a', { href: '/', textContent: 'here’s the full list' }),
-      document.createTextNode('.'),
-    ]);
-    if (season) cta.append(document.createTextNode(` (${season}.)`));
-    wrap.append(cta);
-  } else {
-    wrap.append(el('p', { textContent: C.fairNoWhereToSwitch }));
-  }
-  wrap.append(el('p', { className: 'fine muted' }, [
-    document.createTextNode('Free, unbiased help deciding: your State Health Insurance Assistance Program (SHIP) — '),
-    el('a', { href: 'https://www.shiphelp.org', rel: 'noopener', target: '_blank', textContent: 'find a counselor' }),
-    document.createTextNode(' — or call 1-800-MEDICARE.'),
-  ]));
-  return wrap;
-}
-
-// ---------- 4. perks ----------
-// We have NO benefits data — the PUF is formulary, pricing and pharmacy network. So this section
-// never enumerates or prices a perk; it points at where the real answer lives (00-PRINCIPLES: the
-// system never invents).
-function renderPerks() {
-  const C = COPY();
-  const wrap = el('section', { className: 'card perks' });
-  wrap.append(el('h2', { textContent: C.perksHeading }));
-  wrap.append(el('p', { textContent: C.perksLead }));
-  wrap.append(el('p', { className: 'action-how-head', textContent: C.perksAsk }));
-  const ol = el('ol', { className: 'perks-script' });
-  for (const q of C.perksQuestions) ol.append(el('li', {}, el('blockquote', { className: 'action-script', textContent: q })));
-  wrap.append(ol);
-  wrap.append(el('p', { className: 'fine muted' }, [
-    document.createTextNode('It’s also in your plan’s Annual Notice of Change (ANOC) or Evidence of Coverage (EOC) — the booklet it mails you — and on your plan’s page at '),
-    el('a', { href: 'https://www.medicare.gov/plan-compare', rel: 'noopener', target: '_blank', textContent: 'Medicare.gov' }),
-    document.createTextNode('. A '),
-    el('a', { href: 'https://www.shiphelp.org', rel: 'noopener', target: '_blank', textContent: 'SHIP counselor' }),
-    document.createTextNode(' can read it with you, free.'),
-  ]));
-  return wrap;
-}
-
-// ---------- 5. the capture bridge ----------
+// ---------- the capture bridge ----------
 // The email capture backend doesn't exist yet, so this renders as copy only — no button, no disabled
 // control, nothing that looks tappable and isn't. The "Want a reminder?" paragraph stays as plain
 // text: it's true, it sets the expectation, and cutting it leaves the section trailing off.

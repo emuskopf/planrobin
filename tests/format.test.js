@@ -601,4 +601,77 @@ t('the zero-coverage FIXTURE matches what the live API actually emits (it used t
   }
 });
 
+// ---- Checkup v2 engine: county coverage, exception split, scorecard, next-step, good-news --------
+console.log('\nCheckup v2 — counted not graded, exception path where switching cannot fix it:');
+
+// tiny plan factory: drugs is { rx: covered-bool }
+const vPlan = (id, drugs, extra) => Object.assign({ planId: id, planName: id, planType: 'MA-PD',
+  premium: 0, deductible: 0, notCovered: Object.values(drugs).filter((c) => !c).length,
+  drugs: Object.fromEntries(Object.entries(drugs).map(([rx, c]) => [rx, c ? { covered: true, tier: 2, flags: {}, headline: { kind: 'copay', dollars: 5 }, phases: { '1': { byDaysSupply: { '1': { standardRetail: { kind: 'copay', dollars: 5 }, preferredMail: { kind: 'copay', dollars: 5 } } } } }, appliedOverrides: [] } : { covered: false }])) }, extra || {});
+const vBasket = [['d1', { label: 'Drug One' }], ['d2', { label: 'Drug Two' }]];
+
+t('countyDrugCoverage counts plans covering each drug', () => {
+  const plans = [vPlan('A', { d1: true, d2: false }), vPlan('B', { d1: true, d2: false }), vPlan('C', { d1: false, d2: false })];
+  const c = F.countyDrugCoverage(plans, vBasket);
+  assert.strictEqual(c.d1, 2, 'two plans cover d1');
+  assert.strictEqual(c.d2, 0, 'no plan covers d2');
+});
+
+t('exceptionSplit: nowhere = your gap no county plan covers; elsewhere = your gap some plan covers', () => {
+  const yours = vPlan('MINE', { d1: false, d2: false });
+  const plans = [yours, vPlan('B', { d1: true, d2: false })]; // d1 coverable elsewhere, d2 nowhere
+  const s = F.exceptionSplit(plans, yours, vBasket);
+  assert.deepStrictEqual(s.elsewhere.map((x) => x.rxcui), ['d1']);
+  assert.deepStrictEqual(s.nowhere.map((x) => x.rxcui), ['d2']);
+  assert.strictEqual(s.elsewhere[0].plansCovering, 1);
+});
+
+t('exceptionSplit: a drug YOUR plan covers is never a gap (no exception, no switch)', () => {
+  const yours = vPlan('MINE', { d1: true, d2: true });
+  const s = F.exceptionSplit([yours], yours, vBasket);
+  assert.deepStrictEqual([s.nowhere, s.elsewhere], [[], []]);
+});
+
+t('scorecard is MECE and counts, never grades: reviewed = best + attention + coinsurance', () => {
+  // d1 covered+cheapest (keep), d2 not covered (attention)
+  const yours = vPlan('MINE', { d1: true, d2: false });
+  const a = F.actionPlan(yours, vBasket, { where: 'local', days: '1' });
+  const sc = F.checkupScorecard(a);
+  assert.strictEqual(sc.reviewed, 2);
+  assert.strictEqual(sc.best, 1);
+  assert.strictEqual(sc.attention, 1);          // the gap
+  assert.strictEqual(sc.coinsurance, 0);
+  assert.strictEqual(sc.best + sc.attention + sc.coinsurance, sc.reviewed, 'MECE');
+});
+
+t('nextStep priority: exception (nowhere) outranks a mail move outranks nothing', () => {
+  const yours = vPlan('MINE', { d1: true, d2: false });
+  const a = F.actionPlan(yours, vBasket, { where: 'local', days: '1' });
+  // d2 covered by no county plan → exception is the top step, even if a move exists for d1
+  const exc = F.nextStep(a, F.exceptionSplit([yours], yours, vBasket));
+  assert.strictEqual(exc.kind, 'exception');
+  assert.deepStrictEqual(exc.drugs.map((d) => d.rxcui), ['d2']);
+  // no gaps, nothing to move → nothing
+  const clean = vPlan('MINE', { d1: true, d2: true });
+  const a2 = F.actionPlan(clean, vBasket, { where: 'local', days: '1' });
+  assert.strictEqual(F.nextStep(a2, F.exceptionSplit([clean], clean, vBasket)).kind, 'nothing');
+});
+
+t('goodNewsBullets are computed-true only, each traceable; empty when nothing to say', () => {
+  const clean = vPlan('MINE', { d1: true, d2: true });
+  const a = F.actionPlan(clean, vBasket, { where: 'local', days: '1' });
+  const fpBelow = { fires: false, reason: 'below-floor', floor: 100 };
+  const good = F.goodNewsBullets(clean, a, fpBelow, 100);
+  const kinds = good.map((b) => b.kind);
+  assert.ok(kinds.includes('best-price'), 'per-drug best-price bullets from keep');
+  assert.ok(kinds.includes('compared'), 'the comparison check that RAN, stated as what ran');
+  assert.strictEqual(good.filter((b) => b.kind === 'best-price').length, 2, 'one per covered drug');
+  // a plan with a gap and no below-floor comparison → no "compared" bullet, and the gap isn't good news
+  const gap = vPlan('MINE', { d1: true, d2: false });
+  const a2 = F.actionPlan(gap, vBasket, { where: 'local', days: '1' });
+  const good2 = F.goodNewsBullets(gap, a2, { fires: true, reason: 'not-covered' }, 100);
+  assert.ok(!good2.some((b) => b.kind === 'compared'), 'no compared bullet when the check fired for a gap');
+  assert.ok(good2.every((b) => b.kind === 'best-price'), 'only the genuinely-covered drug is good news');
+});
+
 console.log(`\nALL FORMAT TESTS PASSED (${passed}).`);

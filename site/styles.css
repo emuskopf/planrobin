@@ -298,13 +298,51 @@ select:hover, input[type=text]:hover { border-color: var(--ink-3); }
   border: 1px solid var(--notcov); border-radius: var(--radius); margin-bottom: var(--sp-3); }
 .action-warn .ic { flex: none; color: var(--notcov); margin-top: 2px; }
 .action-baseline { margin: var(--sp-3) 0 0; }
-/* the fair-price check — disclosure, never alarm: amber, not red; calm, not loud */
-.fair-price { border-left: 4px solid var(--caution); }
-.fp-lead { display: flex; gap: var(--sp-2); align-items: flex-start; font-weight: 600; margin-bottom: var(--sp-3); }
-.fp-lead .ic { flex: none; color: var(--notcov); margin-top: 2px; }
-.fp-lead-text { font-weight: 600; }
-.perks-script { margin: 0; padding-left: var(--sp-4); }
-.perks-script li { margin: var(--sp-2) 0; }
+
+/* ---------- v2: scorecard (counted, never graded) ---------- */
+.scorecard .sc-line { font-size: var(--fs-md); font-weight: 600; color: var(--ink); margin-bottom: var(--sp-3); }
+.sc-stats { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.sc-stat { flex: 1 1 8ch; min-width: 8ch; display: flex; flex-direction: column; align-items: flex-start;
+  padding: var(--sp-3) var(--sp-4); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.sc-num { font-family: var(--font-serif); font-size: var(--fs-lg); font-weight: 700; line-height: 1; color: var(--ink); }
+.sc-lbl { font-size: var(--fs-fine); color: var(--ink-2); margin-top: 4px; }
+.sc-stat.sc-good { border-color: var(--good); } .sc-stat.sc-good .sc-num { color: var(--good); }
+/* needs-attention: Robin-Orange accent + warm-gray, per DESIGN.md — never alarm-red, never colour-alone
+   (the "needs attention" word sits beside the number, and the scorecard sentence states the hard fact). */
+.sc-stat.sc-attn { border-color: var(--brand-orange); background: #fbf1ea; }
+.sc-stat.sc-attn .sc-num { color: var(--notcov); }
+
+/* ---------- v2: next step (one named action, first) ---------- */
+.nextstep { border-left: 4px solid var(--good); background: var(--good-tint); }
+.nextstep.nextstep-attn { border-left-color: var(--brand-orange); background: #fbf1ea; }
+.ns-h { font-size: var(--fs-md); margin-bottom: var(--sp-2); }
+.ns-body { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-base); font-weight: 600; color: var(--ink); margin: 0; }
+.ns-body .ic { flex: none; margin-top: 2px; color: var(--good); }
+.nextstep-attn .ns-body .ic { color: var(--notcov); }
+
+/* ---------- v2: worth knowing (would-switch fact + exception path) ---------- */
+.worth-knowing { border-left: 4px solid var(--caution); }
+.wk-switch { font-weight: 600; }
+.wk-exception { display: flex; gap: var(--sp-2); align-items: flex-start; margin: var(--sp-3) 0;
+  padding: var(--sp-3) var(--sp-4); background: var(--notcov-tint); border: 1px solid var(--notcov); border-radius: var(--radius); }
+.wk-exception .ic { flex: none; color: var(--notcov); margin-top: 2px; }
+.wk-cheaper { font-weight: 600; }
+
+/* ---------- v2: questions to ask, grouped by callee ---------- */
+.q-group { margin: var(--sp-4) 0; }
+.q-label { font-size: var(--fs-md); margin-bottom: var(--sp-2); }
+.q-list { margin: 0; padding-left: 0; list-style: none; }
+.q-item { margin: var(--sp-2) 0; }
+.q-doctor .q-label { color: var(--brand-navy); }
+.q-plan .q-label { color: var(--brand-navy); }
+.q-ship .q-label { color: var(--brand-forest); }
+
+/* ---------- v2: good news (computed-true bullets only) ---------- */
+.good-news { background: var(--good-tint); border-left: 4px solid var(--good); }
+.good-news h2 { display: flex; gap: var(--sp-2); align-items: center; }
+.good-news h2 .ic { color: var(--good); }
+.gn-list { margin: 0; padding-left: var(--sp-4); }
+.gn-item { margin: var(--sp-2) 0; }
 .bridge { background: var(--surface-2); }
 .bridge-ask { margin-bottom: 0; }
 /* the homepage's second front door */
@@ -647,9 +685,10 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
   .pp-plan-sub { font-size: 9pt; color: #333; margin: 1pt 0 3pt; }
   /* the checkup gives the premium its own line — the question a real reader asked out loud first */
   .pp-plan-premium { font-size: 11pt; font-weight: 700; margin: 2pt 0 1pt; }
-  .pp-plan.pp-plan-partial { border-left: 3pt solid #b00020; }
-  .pp-plan-total.pp-no-cover { font-size: 9.5pt; font-weight: 700; color: #b00020; }
-  .pp-partial { font-size: 9pt; color: #b00020; font-weight: 600; margin: 2pt 0; }
+  /* not-covered / partial on paper: brand-orange-family clay (#9a3b2f), never alarm-red — DESIGN.md. */
+  .pp-plan.pp-plan-partial { border-left: 3pt solid #9a3b2f; }
+  .pp-plan-total.pp-no-cover { font-size: 9.5pt; font-weight: 700; color: #9a3b2f; }
+  .pp-partial { font-size: 9pt; color: #9a3b2f; font-weight: 600; margin: 2pt 0; }
   .pp-savings { font-size: 9.5pt; color: #146c3a; margin: 2pt 0; }
   .pp-drugs { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 3pt; }
   .pp-drugs td { border-top: 1px solid #ddd; padding: 2pt 4pt; vertical-align: top; }
@@ -663,13 +702,24 @@ table.detail th { background: var(--surface-2); font-weight: 600; }
      photocopy of this sheet loses nothing. */
   .pp-verdict { font-size: 11pt; font-weight: 700; margin: 5pt 0 3pt; page-break-inside: avoid; }
   .pp-verdict-good { color: #146c3a; }
-  .pp-verdict-warn { color: #b00020; }
+  /* needs-attention on paper is brand-orange-family clay (#9a3b2f), NEVER alarm-red — DESIGN.md law. */
+  .pp-verdict-warn { color: #9a3b2f; }
   .pp-bullets { font-size: 10pt; margin: 3pt 0; padding-left: 16pt; }
   .pp-bullets li { margin: 2pt 0; }
   .pp-strong { font-size: 10.5pt; font-weight: 700; margin: 6pt 0 2pt; }
   /* the words to say, set apart as something to read aloud — not decoration */
   .pp-script { font-size: 10pt; margin: 2pt 0 4pt; padding: 4pt 8pt; border-left: 2pt solid #999; color: #222; page-break-inside: avoid; }
   .pp-fine { font-size: 9pt; color: #333; margin: 3pt 0; }
+  /* ---- v2 checkup print: scorecard, next step, questions by callee ---- */
+  .pp-scorecard { font-size: 11pt; font-weight: 700; margin: 4pt 0 2pt; }
+  .pp-scorestats { display: flex; gap: 14pt; font-size: 9pt; color: #756c5c; margin-bottom: 4pt; }
+  .pp-scorestats b { color: #1c2733; }
+  .pp-scorestats .pp-attn b { color: #9a3b2f; }
+  .pp-nextstep { font-size: 11pt; font-weight: 700; margin: 3pt 0 5pt; padding: 4pt 8pt; border-left: 3pt solid #39573A; }
+  .pp-qgroup { margin: 4pt 0; page-break-inside: avoid; }
+  .pp-qlabel { font-size: 10pt; font-weight: 700; color: #756c5c; margin-bottom: 1pt; }
+  .pp-qs { margin: 0; padding-left: 16pt; }
+  .pp-q { font-size: 10pt; margin: 1pt 0; }
   .pp-share-cols { display: flex; gap: 16pt; align-items: flex-start; }
   .pp-url { display: inline-block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 8pt; word-break: break-all; color: #0d4fa0; text-decoration: underline; background: #f4f4f4; padding: 4pt; border-radius: 3pt; }
   .pp-note { font-size: 9.5pt; }

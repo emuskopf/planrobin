@@ -9,6 +9,7 @@ const H = require('./harness');
 const SEL = '.pp-brand, .pp-asof, .pp-inputs > div, .pp-meds li, .pp-coverage, .pp-h, .pp-plan-name, '
   + '.pp-plan-total, .pp-plan-premium, .pp-plan-sub, .pp-partial, .pp-savings, .pp-drugs td, '
   + '.pp-verdict, .pp-bullet, .pp-strong, .pp-script, .pp-fine, '
+  + '.pp-scorecard, .pp-nextstep, .pp-qlabel, .pp-q, '   // v2 (pp-scorestats is decorative — excluded)
   + '.pp-caveats li, .pp-h3, .pp-note, .pp-path-text, .pp-url';
 
 test('print DOM and PDF render identical text from the shared model; PDF is text-based + small', async ({ page }) => {
@@ -94,7 +95,9 @@ test('checkup: print DOM == PDF == model, and the sheet says what the report sai
     // what "by construction" has to mean: not a promise, a comparison.
     const C = PRPassport.checkupCopy;
     const reportText = norm(document.querySelector('#results').textContent);
-    const shared = [C.actionHeading, C.script, C.reassure, C.howHead, C.perksLead, C.perksQuestions[0]]
+    // v2 sentences the report shows on this fixture (all-covered, perks unknown): action heading,
+    // reassure, the scorecard heading, the move/perks questions, the SHIP question.
+    const shared = [C.actionHeading, C.reassure, C.scorecardHeading, C.questionsHeading, C.shipQuestion, C.perksQuestions[0]]
       .filter((s) => reportText.includes(norm(s)));
     return {
       domEqualsModel: eq(domStrings, modelStrings),

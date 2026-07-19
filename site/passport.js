@@ -202,11 +202,8 @@
       return `${verb} — saving about ${PRFormat.dollars(a.saving)}/yr`;
     },
     moveLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, about ${PRFormat.dollars(m.to)}/yr as a ${DAYS_WORD[m.days]} fill by mail. Saving about ${PRFormat.dollars(m.saving)}/yr.`,
-    // A recommendation without its action is incomplete (CONTENT-RULES 16) — so the words to say are
-    // part of the recommendation, not a footnote.
-    howHead: 'How to do it, in one call:',
-    script: 'Call the number on the back of your insurance card and say: “I’d like to move my prescriptions to your mail-order pharmacy.” They’ll ask for your medication names and your doctor’s name, and they do the rest.',
-    // Small, reversible, losing nothing (CONTENT-RULES 15).
+    // The "how" (the exact words to say) lives in Questions to ask now (v2) — see moveQuestion below.
+    // Small, reversible, losing nothing (CONTENT-RULES 15) — this stays with the action detail.
     reassure: 'This is a split, not a switch: you keep the same plan and the same pharmacy for anything else — your pharmacist stays yours. You can change back at any time.',
     keepHead: 'Keep filling these where you do',
     keepBody: (a) => `${nameList(a.keep)} — already your best price on this plan.`,
@@ -218,30 +215,84 @@
         ? ' at a standard (non-preferred) pharmacy. If yours is one of your plan’s preferred pharmacies you may already pay less than we’ve shown, which would make the saving smaller.'
         : '.'),
     fairHeading: FAIR_HEADING,
-    fairNotCoveredLead: (fp, labels) => `Your plan doesn’t cover ${labels} — you’d pay full price for ${fp.yourCoverage.missing.length === 1 ? 'it' : 'them'}, and it wouldn’t count toward your yearly out-of-pocket cap.`,
-    // n === 0: no plan on her road covers everything either. That's a fact worth stating plainly —
-    // it stops her hunting for a plan that doesn't exist — and it's why this sentence is a builder
-    // and not a template with a number jammed in it ("0 other plans cover everything" reads as a bug).
-    fairNotCoveredOthers: (fp) => fp.n === 0
-      ? `No other ${PRFormat.ROAD_NOUN[fp.road] || ''} plan in your county covers everything on your list either — so switching plans wouldn’t fix this by itself.`
-      : `${fp.n} other ${PRFormat.ROAD_NOUN[fp.road] || ''} ${fp.n === 1 ? 'plan' : 'plans'} in your county ${fp.n === 1 ? 'covers' : 'cover'} everything on your list${fp.atLeast ? `, and at least one for about ${PRFormat.dollars(fp.atLeast)} less per year` : ''}.`,
-    // What to do when no plan covers it: the answer is a person, not a plan switch. (Ask about a
-    // formulary exception; a SHIP counselor is free.) Only printed when there's nowhere to switch to.
-    fairNoWhereToSwitch: 'Your plan can be asked for a “formulary exception” — your doctor explains why you need this exact drug. A SHIP counselor can walk you through it, free; the number is below.',
+    // v2: the not-covered story is told by wouldSwitchingFix + the exception path (below); the old
+    // fairNotCovered* / fairNoWhereToSwitch builders are superseded and removed.
     fairCheaper: (fp) => `${fp.n} other ${PRFormat.ROAD_NOUN[fp.road] || ''} ${fp.n === 1 ? 'plan' : 'plans'} in your county would cover these same medications for at least ${PRFormat.dollars(fp.atLeast)} less per year.`,
     // Disclosure, not alarm: staying put is explicitly a good choice, and we name what we don't check.
     fairStayPut: 'If you’re happy with your plan’s doctors, staying put and using the steps above is a perfectly good choice — cheaper plans may not include your doctors, and this checkup doesn’t check networks.',
     // Paper can't be tapped, so the sheet prints the address the screen puts behind a link.
     fairComparePaper: (season) => 'If you’d like to compare, the full list of plans in your county is at planrobin.com.' + (season ? ` (${season}.)` : ''),
-    perksHeading: 'Your plan may include benefits nobody reminded you about',
-    perksLead: 'Dental, vision, over-the-counter allowances, gym memberships — many plans include them, and they’re real money. We don’t have benefits data, so we won’t guess at yours. Here’s how to find out in one call:',
-    perksAsk: 'Call the number on the back of your card and ask:',
+    // v2: the perks questions migrate into "Ask your plan" (grouped questions); no standalone section.
     perksQuestions: [
       '“What extra benefits does my plan include this year?”',
       '“Do I have an over-the-counter allowance — and how do I use it?”',
       '“Is there anything in my plan I haven’t used this year?”',
     ],
     perksPointerPaper: 'It’s also in your plan’s Annual Notice of Change (ANOC) or Evidence of Coverage (EOC) — the booklet it mails you — and on your plan’s page at Medicare.gov. A SHIP counselor can read it with you, free.',
+
+    // ---- v2: scorecard (counted, never graded — spec item 2 + UX-REVIEW #13) ----
+    scorecardHeading: 'Your checkup at a glance',
+    // "3 of 4 medications covered at your best price · 1 needs attention" — the exact mockup wording.
+    // No single-word verdict; the counts speak. Coinsurance drugs, when present, get their own honest
+    // clause rather than being folded into "best price" (we can't confirm it) or "needs attention".
+    scorecardHeader: (sc) => {
+      const parts = [`${sc.best} of ${sc.reviewed} medication${sc.reviewed === 1 ? '' : 's'} covered at your best price`];
+      if (sc.attention) parts.push(`${sc.attention} need${sc.attention === 1 ? 's' : ''} attention`);
+      if (sc.coinsurance) parts.push(`${sc.coinsurance} priced as coinsurance (we can’t compare)`);
+      return parts.join(' · ');
+    },
+    scorecardStat: { reviewed: 'reviewed', best: 'covered at best price', attention: 'needs attention' },
+    // The computed fact, in the reader's own question. Fires from the exception split, never a grade.
+    //   nowhere → switching can't fix it (the exception path follows);  elsewhere → switching is a way.
+    wouldSwitchingFix: (split, countyName) => {
+      if (split.nowhere.length) {
+        return `Would switching plans fix this? No — no plan in ${countyName} covers ${nameList(split.nowhere)}, so switching wouldn’t help. There’s a process for exactly this: a formulary exception (below).`;
+      }
+      if (split.elsewhere.length) {
+        const d = split.elsewhere;
+        const n = d.reduce((m, x) => Math.max(m, x.plansCovering), 0);
+        return `Would switching plans fix this? Yes — ${n} plan${n === 1 ? '' : 's'} in ${countyName} cover${n === 1 ? 's' : ''} ${nameList(d)}. Comparing every plan is one way to get it covered.`;
+      }
+      return null;
+    },
+
+    // ---- v2: the formulary exception path (spec item 1) ----
+    // VERIFIED against CMS, Jul 2026 (cms.gov/medicare/appeals-grievances/prescription-drug/exceptions;
+    // medicare.gov drug-plan-rules): a formulary exception is the process to obtain a drug NOT on the
+    // plan's formulary; the ENROLLEE or the PRESCRIBER may request it, and the plan needs the
+    // prescriber's supporting statement (that covered alternatives would be less effective/harmful) to
+    // decide. We name the process and the two people to ask; we do NOT state a timeline (a stale-able
+    // number the reader doesn't need to take the first step).
+    exceptionLead: (split, countyName) => `No plan in ${countyName} covers ${nameList(split.nowhere)} — so switching plans wouldn’t fix this. There’s a process for exactly this situation: a formulary exception. Your doctor tells your plan why you need this specific drug, and the plan decides whether to cover it.`,
+    exceptionDoctorQ: (split) => `Can you request a formulary exception for ${nameList(split.nowhere)}? It needs a short supporting statement from you.`,
+    exceptionPlanQ: 'Is there a covered alternative to this drug — or how do I start a formulary exception request?',
+
+    // ---- v2: Questions to ask, grouped by who you call (spec item 4 — the standard action format) ----
+    questionsHeading: 'Questions to ask',
+    calleeLabel: { doctor: 'Ask your doctor', plan: 'Ask your plan (number on your card)', ship: 'Ask a SHIP counselor (free, unbiased)' },
+    // the mail-order move, reframed as the plain sentence to say to the plan
+    moveQuestion: 'I’d like to move my prescriptions to your mail-order pharmacy. What do you need from me?',
+    // SHIP is the general, free helper — no exception mention here (that lives with the doctor/plan
+    // questions, and only when there's actually a gap), so this never dangles "exception" for someone
+    // whose plan already covers everything.
+    shipQuestion: 'Can you look over my plan with me and make sure I’m not missing anything or overpaying?',
+
+    // ---- v2: the next recommended step (spec item 3 — one named action, first) ----
+    nextStepHeading: 'Your next step',
+    nextStepText: (step) => {
+      if (step.kind === 'exception') return `Ask your doctor about a formulary exception for ${nameList(step.drugs)} — it’s the process for a drug your plan doesn’t cover.`;
+      if (step.kind === 'move') return `Move ${step.n === 1 ? 'your prescription' : 'these ' + step.n + ' prescriptions'} to mail order — about ${PRFormat.dollars(step.saving)}/yr saved, same plan, same pharmacy for everything else.`;
+      return 'Nothing to change — you’re already filling at your best price on this plan. We checked.';
+    },
+
+    // ---- v2: Good news — computed-true bullets only (spec item 5) ----
+    goodNewsHeading: 'Good news',
+    goodNewsBullet: (b) => {
+      if (b.kind === 'best-price') return `${b.label} is already at your best price — about ${PRFormat.dollars(b.annual)}/yr on this plan.`;
+      if (b.kind === 'deductible') return b.text;
+      if (b.kind === 'compared') return `We compared every plan in your county and found none at least ${PRFormat.dollars(b.floor)}/yr cheaper that covers everything you take.`;
+      return '';
+    },
   };
 
   // The checkup's sheet. Page 1 is her plan and what to do about it; page 2 is the same reopen page
@@ -257,7 +308,6 @@
     const you = group.yourPlan;
     if (!you) return null;
     const ambig = PRFormat.ambiguousPlanIds(data.plans);
-    const labelOf = (rx) => { const e = drugs.find(([r]) => r === rx); return (e && e[1] && e[1].label) || rx; };
 
     const items = [];
     items.push({ type: 'brand', text: 'PlanRobin — your 5-Minute Medicare Checkup' });
@@ -266,15 +316,31 @@
     items.push({ type: 'label', text: 'Medications (30-day fills):' });
     for (const [, d] of drugs) items.push({ type: 'med', text: `${d.label} — ${qtyLabel(d.qty)}` });
 
-    // 1 — her plan, premium given the prominence a real reader asked for out loud.
-    items.push({ type: 'h', text: checkupCopy.planHeading(opts.planIdSource), page1Heading: true });
+    // v2 — everything below is computed ONCE, here, from the same data the picker used:
+    const a = PRFormat.actionPlan(you, drugs, opts.fill);
+    const split = PRFormat.exceptionSplit(data.plans, you, drugs);   // county-wide: nowhere vs elsewhere
+    const fp = PRFormat.fairPriceCheck(group);
+    const sc = PRFormat.checkupScorecard(a);
+    const step = PRFormat.nextStep(a, split);
+    const good = PRFormat.goodNewsBullets(you, a, fp, fp.floor);
+    const countyName = data.county.name;
+    const perksUnknown = opts.perks === 'no' || opts.perks === 'unsure';
+
+    // 1 — SCORECARD (counted, never graded): the first thing she reads, the whole checkup at a glance.
+    items.push({ type: 'h', text: checkupCopy.scorecardHeading, page1Heading: true });
+    items.push({ type: 'scorecard', text: checkupCopy.scorecardHeader(sc), stats: sc });
+
+    // 2 — NEXT STEP: one named action, before any detail (exception > mail move > nothing).
+    items.push({ type: 'h', text: checkupCopy.nextStepHeading });
+    items.push({ type: 'nextstep', text: checkupCopy.nextStepText(step) });
+
+    // 3 — her plan, premium given the prominence a real reader asked for out loud.
+    items.push({ type: 'h', text: checkupCopy.planHeading(opts.planIdSource) });
     items.push(planItem(you, drugs, ambig, { premiumProminent: true }));
 
-    // 2 — the action plan, grouped by ACTION with the words to say.
-    const a = PRFormat.actionPlan(you, drugs, opts.fill);
+    // 4 — WHAT YOU CAN DO: the action detail with the dollars. The "how" (the words to say) has moved
+    // to Questions to ask, so a script isn't repeated here — this section is what + how much.
     items.push({ type: 'h', text: checkupCopy.actionHeading });
-    // A gap outranks a verdict about pharmacies: she hears about the drug her plan won't pay for
-    // BEFORE she hears that her pharmacy choice is fine.
     if (a.notCovered.length) items.push({ type: 'verdict', kind: 'warn', text: checkupCopy.actionNotCovered(a) });
     if (a.allClear) {
       items.push({ type: 'verdict', kind: 'good', text: checkupCopy.doNothing });
@@ -284,8 +350,6 @@
       if (a.moves.length) {
         items.push({ type: 'h3', text: checkupCopy.moveHead(a) });
         for (const m of a.moves) items.push({ type: 'bullet', text: checkupCopy.moveLine(m) });
-        items.push({ type: 'strong', text: checkupCopy.howHead });
-        items.push({ type: 'script', text: checkupCopy.script });
         items.push({ type: 'note', text: checkupCopy.reassure });
       }
       if (a.keep.length) {
@@ -294,37 +358,44 @@
       }
       if (a.cant.length) items.push({ type: 'fine', text: checkupCopy.cant(a) });
     }
-    // The baseline note explains a measurement — so it only prints when something was measured.
     if (a.moves.length || a.keep.length) items.push({ type: 'fine', text: checkupCopy.baseline(a) });
 
-    // 3 — the fair-price check. Silence is a designed outcome: nothing prints when it doesn't fire.
-    const fp = PRFormat.fairPriceCheck(group);
-    if (fp.fires) {
+    // 5 — WORTH KNOWING: the computed "would switching fix this" fact, then the right remedy —
+    //   nowhere gap   → the formulary exception path (switching can't help)
+    //   elsewhere gap → the calm compare option (switching is a way)
+    //   cheaper plan  → the money fact + the calm compare option
+    const wouldSwitch = checkupCopy.wouldSwitchingFix(split, countyName);
+    const hasGap = split.nowhere.length || split.elsewhere.length;
+    if (hasGap || fp.reason === 'cheaper') {
       items.push({ type: 'h', text: checkupCopy.fairHeading });
-      if (fp.reason === 'not-covered') {
-        items.push({ type: 'verdict', kind: 'warn', text: checkupCopy.fairNotCoveredLead(fp, fp.yourCoverage.missing.map(labelOf).join(', ')) });
-        items.push({ type: 'note', text: checkupCopy.fairNotCoveredOthers(fp) });
-      } else {
-        items.push({ type: 'note', text: checkupCopy.fairCheaper(fp) });
-      }
-      // "Staying put is a perfectly good choice" only makes sense when there's somewhere to go. With
-      // no alternative that covers everything, the honest next step is a person, not a plan switch.
-      if (fp.n > 0) {
+      if (wouldSwitch) items.push({ type: 'note', text: wouldSwitch });
+      if (split.nowhere.length) items.push({ type: 'verdict', kind: 'warn', text: checkupCopy.exceptionLead(split, countyName) });
+      if (fp.reason === 'cheaper') items.push({ type: 'note', text: checkupCopy.fairCheaper(fp) });
+      if (fp.n > 0 && (split.elsewhere.length || fp.reason === 'cheaper')) {
         items.push({ type: 'note', text: checkupCopy.fairStayPut });
         items.push({ type: 'note', text: checkupCopy.fairComparePaper(PRFormat.seasonLine(opts.meta, opts.now || new Date())) });
-      } else {
-        items.push({ type: 'note', text: checkupCopy.fairNoWhereToSwitch });
       }
-      // (No SHIP line here — the "Before you decide" caveats on page 2 already carry it.)
     }
 
-    // 4 — perks, only when she told us she doesn't know. Script + pointers; never a priced perk.
-    if (opts.perks === 'no' || opts.perks === 'unsure') {
-      items.push({ type: 'h', text: checkupCopy.perksHeading });
-      items.push({ type: 'note', text: checkupCopy.perksLead });
-      items.push({ type: 'strong', text: checkupCopy.perksAsk });
-      for (const q of checkupCopy.perksQuestions) items.push({ type: 'script', text: q });
-      items.push({ type: 'fine', text: checkupCopy.perksPointerPaper });
+    // 6 — QUESTIONS TO ASK, grouped by who you call. The standard action format: the exception asks,
+    // the mail-order ask, the perks asks — all as sentences to say, sorted by callee. SHIP is the
+    // human fallback, always offered; the section only appears when there's a doctor or plan ask.
+    const qDoctor = [], qPlan = [];
+    if (split.nowhere.length) { qDoctor.push(checkupCopy.exceptionDoctorQ(split)); qPlan.push(checkupCopy.exceptionPlanQ); }
+    if (a.moves.length) qPlan.push(checkupCopy.moveQuestion);
+    if (perksUnknown) for (const q of checkupCopy.perksQuestions) qPlan.push(q);
+    if (qDoctor.length || qPlan.length) {
+      items.push({ type: 'h', text: checkupCopy.questionsHeading });
+      if (qDoctor.length) items.push({ type: 'qgroup', callee: 'doctor', label: checkupCopy.calleeLabel.doctor, questions: qDoctor });
+      if (qPlan.length) items.push({ type: 'qgroup', callee: 'plan', label: checkupCopy.calleeLabel.plan, questions: qPlan });
+      items.push({ type: 'qgroup', callee: 'ship', label: checkupCopy.calleeLabel.ship, questions: [checkupCopy.shipQuestion] });
+      if (perksUnknown) items.push({ type: 'fine', text: checkupCopy.perksPointerPaper });
+    }
+
+    // 7 — GOOD NEWS: computed-true bullets only; the section is absent when there's nothing verifiable.
+    if (good.length) {
+      items.push({ type: 'h', text: checkupCopy.goodNewsHeading });
+      for (const b of good) items.push({ type: 'bullet', text: checkupCopy.goodNewsBullet(b) });
     }
 
     // Page 2 — one plan on this sheet, so caveatTexts prints the MA-PD note only if HER plan is MA-PD,
@@ -344,6 +415,8 @@
     for (const it of model.items) {
       if (it.type === 'qr') continue;
       if (it.type === 'path') { out.push(it.text); continue; } // the sentence (not the decorative icon)
+      // A callee group: the label, then each question. Both renderers emit exactly this order.
+      if (it.type === 'qgroup') { out.push(it.label); for (const q of it.questions) out.push(q); continue; }
       if (it.type === 'plan') {
         // Order matches both renderers exactly: name, total, [premium], sub, …
         out.push(it.name, it.total);

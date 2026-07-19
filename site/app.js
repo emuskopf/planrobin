@@ -1087,6 +1087,26 @@ function renderPassportDom(model) {
     else if (it.type === 'strong') page.append(el('p', { className: 'pp-strong', textContent: it.text }));
     else if (it.type === 'script') page.append(el('blockquote', { className: 'pp-script', textContent: it.text }));
     else if (it.type === 'fine') page.append(el('p', { className: 'pp-fine', textContent: it.text }));
+    // ---- v2 ---- Scorecard: the header sentence (parity), plus a decorative stat row (aria-hidden,
+    // NOT in the parity strings — same treatment as icons/QR). Counts, never a graded word.
+    else if (it.type === 'scorecard') {
+      page.append(el('div', { className: 'pp-scorecard', textContent: it.text }));
+      const s = it.stats, chips = el('div', { className: 'pp-scorestats', 'aria-hidden': 'true' });
+      chips.append(el('span', {}, [el('b', { textContent: String(s.reviewed) }), document.createTextNode(' reviewed')]));
+      chips.append(el('span', {}, [el('b', { textContent: String(s.best) }), document.createTextNode(' at best price')]));
+      if (s.attention) chips.append(el('span', { className: 'pp-attn' }, [el('b', { textContent: String(s.attention) }), document.createTextNode(' need attention')]));
+      page.append(chips);
+    }
+    // The single named next step, as a callout above the detail.
+    else if (it.type === 'nextstep') page.append(el('div', { className: 'pp-nextstep', textContent: it.text }));
+    // A callee group: the "Ask your doctor/plan/SHIP" label + the sentences to say (parity order).
+    else if (it.type === 'qgroup') {
+      const g = el('div', { className: 'pp-qgroup pp-qgroup-' + it.callee });
+      g.append(el('div', { className: 'pp-qlabel', textContent: it.label }));
+      const ul = el('ul', { className: 'pp-qs' });
+      for (const q of it.questions) ul.append(el('li', { className: 'pp-q', textContent: q }));
+      g.append(ul); page.append(g);
+    }
     else if (it.type === 'caveat') listIn(page, 'pp-caveats').append(el('li', { textContent: it.text }));
     // A plain sub-heading (the action plan's "Keep filling these…", "Send these 2 to mail order…").
     else if (it.type === 'h3') page.append(el('h3', { className: 'pp-h3', textContent: it.text }));
@@ -1118,7 +1138,13 @@ async function renderPassportPdf(model) {
   // PDF echoes the site's Source Serif look without shipping a font. Body stays Helvetica (crisp small).
   const serif = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const W = 612, H = 792, M = 54, maxW = W - 2 * M;
-  const c = { ink: rgb(0.11, 0.15, 0.2), gray: rgb(0.3, 0.3, 0.32), green: rgb(0.08, 0.42, 0.23), red: rgb(0.69, 0, 0.13), line: rgb(0.8, 0.79, 0.75), link: rgb(0.05, 0.35, 0.72), mark: rgb(0.12, 0.16, 0.21) };
+  // PALETTE (DESIGN.md): warnings are amber/clay, NEVER alarm-red. `warn` is the --notcov brand-orange
+  // family (#9a3b2f, 6.9:1 AA at any size) — the same token the screen uses — so needs-attention reads
+  // the same on paper as on screen, and no true red appears anywhere. `orange` is Robin Orange
+  // (#C85A2B, large/decorative only) for the scorecard accent. `warmgray` (#756C5C) for muted labels.
+  const c = { ink: rgb(0.11, 0.15, 0.2), gray: rgb(0.3, 0.3, 0.32), green: rgb(0.08, 0.42, 0.23),
+    warn: rgb(0.604, 0.231, 0.184), orange: rgb(0.784, 0.353, 0.169), warmgray: rgb(0.459, 0.424, 0.361),
+    line: rgb(0.8, 0.79, 0.75), link: rgb(0.05, 0.35, 0.72), mark: rgb(0.12, 0.16, 0.21) };
   let page = pdf.addPage([W, H]); let y = H - M;
   const drawn = [];
 
@@ -1206,17 +1232,32 @@ async function renderPassportPdf(model) {
     else if (it.type === 'h') { y -= 4; text(it.text, { serif: true, size: 14 }); rule(); }
     else if (it.type === 'plan') {
       text(it.name, { bold: true, size: 12, gap: 1 });
-      text(it.total, { bold: true, size: 12, color: it.noCover ? c.red : c.ink, gap: 1 });
+      text(it.total, { bold: true, size: 12, color: it.noCover ? c.warn : c.ink, gap: 1 });
       // Same order as the model + the print DOM: name, total, [premium], sub.
       if (it.premium) text(it.premium, { bold: true, size: 11, gap: 1 });
       text(it.sub, { size: 9, color: c.gray });
-      if (it.partial) text(it.partial, { size: 9, color: c.red });
+      if (it.partial) text(it.partial, { size: 9, color: c.warn });
       if (it.savings) text(it.savings, { size: 9.5, color: c.green });
       for (const row of it.drugs) drugRow(row);
       rule();
     }
+    // ---- v2 ---- Scorecard: the header sentence in Robin-Orange-accented ink, then a decorative
+    // stat line (NOT recorded to the parity `drawn` list — matches the aria-hidden DOM chips).
+    else if (it.type === 'scorecard') {
+      text(it.text, { bold: true, size: 11 });
+      const s = it.stats;
+      const chips = `${s.reviewed} reviewed   ·   ${s.best} at best price` + (s.attention ? `   ·   ${s.attention} need attention` : '');
+      text(chips, { size: 9, color: c.warmgray, record: false, gap: 4 });
+    }
+    else if (it.type === 'nextstep') { y -= 2; text(it.text, { bold: true, size: 11, color: c.ink }); y -= 2; }
+    else if (it.type === 'qgroup') {
+      text(it.label, { bold: true, size: 10, color: c.warmgray, gap: 1 });
+      // Render each question VERBATIM (no added quotes) — the parity string is the raw sentence.
+      for (const q of it.questions) text(q, { size: 10, indent: 16, prefix: '•  ', color: c.gray });
+    }
     // ---- the checkup's page 1 (see the DOM renderer for the pairing) ----
-    else if (it.type === 'verdict') { y -= 2; text(it.text, { bold: true, size: 11, color: it.kind === 'warn' ? c.red : c.green }); }
+    // warn = brand-orange-family clay (never alarm-red), matching the screen's --notcov and DESIGN.md.
+    else if (it.type === 'verdict') { y -= 2; text(it.text, { bold: true, size: 11, color: it.kind === 'warn' ? c.warn : c.green }); }
     else if (it.type === 'bullet') text(it.text, { size: 10, indent: 12, prefix: '•  ' });
     else if (it.type === 'strong') text(it.text, { bold: true, size: 10.5, gap: 1 });
     else if (it.type === 'script') text(it.text, { size: 10, indent: 16, color: c.gray });
