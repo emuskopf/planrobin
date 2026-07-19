@@ -243,15 +243,23 @@
     },
     scorecardStat: { reviewed: 'reviewed', best: 'covered at best price', attention: 'needs attention' },
     // The computed fact, in the reader's own question. Fires from the exception split, never a grade.
-    //   nowhere → switching can't fix it (the exception path follows);  elsewhere → switching is a way.
+    // Three honest shapes — and when BOTH kinds of gap exist, it says so rather than hiding one:
+    //   nowhere only   → No (a formulary exception is the path)
+    //   elsewhere only → Yes (comparing is a way)
+    //   both           → Partly (name each, with its own remedy)
     wouldSwitchingFix: (split, countyName) => {
-      if (split.nowhere.length) {
-        return `Would switching plans fix this? No — no plan in ${countyName} covers ${nameList(split.nowhere)}, so switching wouldn’t help. There’s a process for exactly this: a formulary exception (below).`;
+      const nw = split.nowhere, el = split.elsewhere;
+      const elN = el.length ? el.reduce((m, x) => Math.max(m, x.plansCovering), 0) : 0;
+      const noPart = `no plan in ${countyName} covers ${nameList(nw)}` + (nw.length === 1 ? '' : '');
+      const yesPart = `${elN} plan${elN === 1 ? '' : 's'} in ${countyName} cover${elN === 1 ? 's' : ''} ${nameList(el)}`;
+      if (nw.length && el.length) {
+        return `Would switching plans fix this? Partly. First, ${noPart}, so switching wouldn’t help ${nw.length === 1 ? 'that one' : 'those'} — a formulary exception is the path (below). But ${yesPart}, so comparing plans is a way to get ${el.length === 1 ? 'that one' : 'those'} covered.`;
       }
-      if (split.elsewhere.length) {
-        const d = split.elsewhere;
-        const n = d.reduce((m, x) => Math.max(m, x.plansCovering), 0);
-        return `Would switching plans fix this? Yes — ${n} plan${n === 1 ? '' : 's'} in ${countyName} cover${n === 1 ? 's' : ''} ${nameList(d)}. Comparing every plan is one way to get it covered.`;
+      if (nw.length) {
+        return `Would switching plans fix this? No — ${noPart}, so switching wouldn’t help. There’s a process for exactly this: a formulary exception (below).`;
+      }
+      if (el.length) {
+        return `Would switching plans fix this? Yes — ${yesPart}. Comparing every plan is one way to get ${el.length === 1 ? 'it' : 'them'} covered.`;
       }
       return null;
     },
@@ -282,6 +290,9 @@
     nextStepText: (step) => {
       if (step.kind === 'exception') return `Ask your doctor about a formulary exception for ${nameList(step.drugs)} — it’s the process for a drug your plan doesn’t cover.`;
       if (step.kind === 'move') return `Move ${step.n === 1 ? 'your prescription' : 'these ' + step.n + ' prescriptions'} to mail order — about ${PRFormat.dollars(step.saving)}/yr saved, same plan, same pharmacy for everything else.`;
+      // A gap OTHER plans cover: NOT "nothing to change" (that would be false reassurance) — the honest
+      // step is to compare, because switching is the way to get it covered.
+      if (step.kind === 'compare') return `Worth comparing plans — ${nameList(step.drugs)} ${step.drugs.length === 1 ? 'isn’t' : 'aren’t'} covered on your plan, but other plans in your county cover ${step.drugs.length === 1 ? 'it' : 'them'}.`;
       return 'Nothing to change — you’re already filling at your best price on this plan. We checked.';
     },
 

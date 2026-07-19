@@ -482,9 +482,15 @@
   // plan's top item + the exception split — one named thing to do, before any detail. Note: "preferred
   // switch" is in the spec's priority list but actionPlan currently searches mail channels only, so it
   // is never produced here yet (flagged, not invented).
+  // Priority: exception (a gap nothing covers) > mail move (save money) > compare (a gap OTHERS cover)
+  // > nothing. `compare` matters: a plan that misses a drug OTHER plans cover is NOT "nothing to
+  // change" — saying so would be false reassurance (#13). It's a real gap; the honest step is to
+  // compare. ("preferred switch" is in the spec's list but actionPlan searches mail channels only, so
+  // it isn't produced yet — flagged, not invented.)
   function nextStep(a, split) {
     if (split && split.nowhere.length) return { kind: 'exception', drugs: split.nowhere };
     if (a.moves.length) return { kind: 'move', saving: a.saving, days: a.moves[0].days, n: a.moves.length, drugs: a.moves };
+    if (split && split.elsewhere.length) return { kind: 'compare', drugs: split.elsewhere };
     return { kind: 'nothing' };
   }
 

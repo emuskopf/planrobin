@@ -220,6 +220,19 @@ t('v2: scorecard is counted-not-graded, and every gap/step traces to a computed 
   assert.ok(s.includes(C.nextStepHeading), 'the next-step heading');
 });
 
+t('v2: wouldSwitchingFix says No/Yes/Partly honestly, and never hides a gap (live 2026-07-19)', () => {
+  const C = P.checkupCopy;
+  const nw = { nowhere: [{ label: 'BrandX' }], elsewhere: [] };
+  const el = { nowhere: [], elsewhere: [{ label: 'DrugY', plansCovering: 79 }] };
+  const both = { nowhere: [{ label: 'BrandX' }], elsewhere: [{ label: 'DrugY', plansCovering: 79 }] };
+  assert.ok(/^Would switching plans fix this\? No —/.test(C.wouldSwitchingFix(nw, 'St. Louis')), 'nowhere → No');
+  assert.ok(/^Would switching plans fix this\? Yes — 79 plans/.test(C.wouldSwitchingFix(el, 'St. Louis')), 'elsewhere → Yes');
+  const b = C.wouldSwitchingFix(both, 'St. Louis');
+  assert.ok(/^Would switching plans fix this\? Partly\./.test(b), 'both → Partly');
+  assert.ok(/BrandX/.test(b) && /DrugY/.test(b), 'and names BOTH gaps — neither is hidden: ' + b);
+  assert.strictEqual(C.wouldSwitchingFix({ nowhere: [], elsewhere: [] }, 'X'), null, 'no gap → nothing to say');
+});
+
 t('v2: the formulary-exception path fires ONLY when NO county plan covers the drug', () => {
   const C = P.checkupCopy;
   const F = require('../site/format.js');

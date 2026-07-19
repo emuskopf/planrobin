@@ -644,7 +644,7 @@ t('scorecard is MECE and counts, never grades: reviewed = best + attention + coi
   assert.strictEqual(sc.best + sc.attention + sc.coinsurance, sc.reviewed, 'MECE');
 });
 
-t('nextStep priority: exception (nowhere) outranks a mail move outranks nothing', () => {
+t('nextStep priority: exception (nowhere) > mail move > compare (elsewhere) > nothing', () => {
   const yours = vPlan('MINE', { d1: true, d2: false });
   const a = F.actionPlan(yours, vBasket, { where: 'local', days: '1' });
   // d2 covered by no county plan → exception is the top step, even if a move exists for d1
@@ -655,6 +655,14 @@ t('nextStep priority: exception (nowhere) outranks a mail move outranks nothing'
   const clean = vPlan('MINE', { d1: true, d2: true });
   const a2 = F.actionPlan(clean, vBasket, { where: 'local', days: '1' });
   assert.strictEqual(F.nextStep(a2, F.exceptionSplit([clean], clean, vBasket)).kind, 'nothing');
+  // REGRESSION (live 2026-07-19): her plan misses a drug OTHERS cover → 'compare', NEVER 'nothing'.
+  // "nothing to change" while a drug is uncovered is false reassurance (#13).
+  const gapYours = vPlan('MINE', { d1: true, d2: false });
+  const plansEl = [gapYours, vPlan('B', { d1: true, d2: true })]; // d2 coverable elsewhere
+  const a3 = F.actionPlan(gapYours, vBasket, { where: 'local', days: '1' });
+  const cmp = F.nextStep(a3, F.exceptionSplit(plansEl, gapYours, vBasket));
+  assert.strictEqual(cmp.kind, 'compare', 'an elsewhere-only gap is worth comparing, not "nothing to change"');
+  assert.deepStrictEqual(cmp.drugs.map((d) => d.rxcui), ['d2']);
 });
 
 t('goodNewsBullets are computed-true only, each traceable; empty when nothing to say', () => {
