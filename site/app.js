@@ -116,6 +116,90 @@ async function init() {
 
   // A share link in the fragment restores the search and reruns it against CURRENT data.
   await maybeRestoreFromHash();
+  wireCodeRestore(); // the hand-typed paper restore code (both pages)
+}
+
+// The page-appropriate runner for a restored search: the checkup binds its own (PRRunSearch),
+// the comparison uses runResults.
+function runSearch() { if (typeof window.PRRunSearch === 'function') window.PRRunSearch(); else runResults(); }
+
+// ---------- hand-typed restore code (the paper-only reopen path) ----------
+// Forgiving, incremental, per-line: each line validates client-side (Damm check digit — instant, no
+// server), then names are filled in best-effort from RxNorm. A mistake is isolated to its line and
+// never costs a full retype. On restore we set the SAME state a link would, then run.
+const CODE_ERR = {
+  version: 'this code is from a newer version of PlanRobin — check you copied it correctly',
+  length: 'doesn’t look quite right — check it digit by digit',
+  check: 'doesn’t look quite right — check it digit by digit',
+};
+function wireCodeRestore() {
+  const box = $('#code-restore'); if (!box || typeof PRRestoreCode === 'undefined') return;
+  const ta = $('#code-input'), out = $('#code-lines'), go = $('#code-go'), hint = $('#code-hint');
+  let seq = 0, timer = null;
+  const debounced = (fn) => { clearTimeout(timer); timer = setTimeout(fn, 250); };
+
+  async function validate() {
+    const mine = ++seq;
+    const dec = PRRestoreCode.decode(ta.value);
+    out.innerHTML = '';
+    if (dec.empty) { go.disabled = true; if (hint) hint.textContent = ''; return; }
+    const rows = [];
+    for (const ln of dec.lines) {
+      const ok = ln.ok;
+      const drugName = ln.kind === 'drug' ? ('medication code ' + ln.rxcui) : 'your area';
+      const text = ok ? `Line ${ln.line} ✓ ${drugName}` : `Line ${ln.line} ${CODE_ERR[ln.reason] || CODE_ERR.check}`;
+      const row = el('div', { className: 'code-line ' + (ok ? 'cl-ok' : 'cl-bad') }, [
+        el('span', { className: 'cl-mark', 'aria-hidden': 'true', textContent: ok ? '✓' : '!' }),
+        el('span', { className: 'cl-text', textContent: text }),
+      ]);
+      out.append(row); rows.push({ ln, row });
+    }
+    const drugsOk = dec.lines.filter((l, i) => i > 0 && l.ok);
+    const countyOk = dec.lines[0] && dec.lines[0].ok && dec.lines[0].kind === 'county';
+    const allOk = dec.lines.every((l) => l.ok);
+    // Every line must check out before we restore — a bad line would silently drop that medication.
+    go.disabled = !(countyOk && drugsOk.length && allOk);
+    if (hint) hint.textContent = !allOk ? 'Check the highlighted line, then try again.'
+      : go.disabled ? 'Enter the county line and at least one medication line.' : '';
+    box._decoded = dec;
+    // Names are best-effort: the checksum already proved each line; RxNorm just fills the label in.
+    if (drugsOk.length) {
+      try {
+        const res = await getJSON('/api/rxnorm/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rxcuis: drugsOk.map((d) => d.rxcui) }) });
+        if (mine !== seq) return;
+        const byRx = Object.fromEntries((res.results || []).map((r) => [r.rxcui, r]));
+        box._names = byRx;
+        for (const { ln, row } of rows) if (ln.kind === 'drug' && ln.ok) {
+          const r = byRx[ln.rxcui];
+          if (r && r.name) row.querySelector('.cl-text').textContent = `Line ${ln.line} ✓ ${r.name}`;
+        }
+      } catch (_) { /* names best-effort — the code still restores, labelled by rxcui */ }
+    }
+  }
+  ta.addEventListener('input', () => debounced(validate));
+
+  go.addEventListener('click', () => {
+    const dec = box._decoded || PRRestoreCode.decode(ta.value);
+    if (!(dec.lines[0] && dec.lines[0].ok)) return;
+    const byRx = box._names || {};
+    const sel = $('#county'); const opt = sel && [...sel.options].find((o) => o.value === dec.county);
+    if (opt) confirmCounty(dec.county, opt.textContent, 'link');
+    state.drugs.clear();
+    let anyUnresolved = false;
+    for (const d of dec.drugs) {
+      if (state.drugs.size >= 10) break;
+      const r = byRx[d.rxcui];
+      if (!(r && r.name)) anyUnresolved = true;
+      state.drugs.set(d.rxcui, { label: (r && r.name) || ('Medication ' + d.rxcui), kind: (r && r.kind) || 'drug', qty: d.qty, offFormulary: r ? r.onFormulary === false : false });
+    }
+    if (dec.fill) state.fill = { where: dec.fill.where, days: dec.fill.days };
+    state.restoredFromLink = true;
+    renderChips(); refreshGo();
+    // Honest note if RxNorm couldn't name a drug — the search still runs (never blocks).
+    if (anyUnresolved) $('#go-hint').textContent = 'We couldn’t look up every medication name just now — your search still runs; names may show as codes.';
+    if (state.county && state.drugs.size) runSearch();
+    else $('#go-hint').textContent = 'Restored your medications from the code — enter your ZIP or pick your county to see plans.';
+  });
 }
 
 function renderProvenance(meta) {
@@ -156,7 +240,9 @@ function renderWalletCheck() {
 
 function setRoad(road, note) {
   state.road = road;
-  for (const b of document.querySelectorAll('.road-choice')) b.setAttribute('aria-pressed', String(b.dataset.road === road));
+  // ONLY the road buttons — the checkup's fill-habit and perks buttons reuse the .road-choice class
+  // for styling but must not answer the road question (their own pressGroup owns aria-pressed).
+  for (const b of document.querySelectorAll('#road-choices .road-choice')) b.setAttribute('aria-pressed', String(b.dataset.road === road));
   const st = $('#road-status'); st.innerHTML = '';
   if (note) st.append(el('p', { className: 'road-status-line', textContent: note }));
   if (road === 'unsure') st.append(renderWalletCheck());
@@ -165,7 +251,10 @@ function setRoad(road, note) {
 }
 
 function wireRoad() {
-  for (const btn of document.querySelectorAll('.road-choice')) {
+  // Scope to the ROAD question only. The checkup reuses .road-choice for its fill-habit / perks
+  // buttons (styling); wiring them here would clobber state.road and fight their own aria-pressed
+  // every time she answered Q4/Q5. (Bug found via the restore-code round-trip, 2026-07.)
+  for (const btn of document.querySelectorAll('#road-choices .road-choice')) {
     btn.addEventListener('click', () => {
       const road = btn.dataset.road;
       if (state.road === road) { setRoad(null, null); return; } // tap again to un-answer
@@ -1017,14 +1106,14 @@ function passportModelNow(data) {
   const shareUrl = location.href;
   if (PAGE === 'checkup') {
     return PRPassport.checkupModel(data, [...state.drugs], {
-      shareUrl,
+      shareUrl, county: state.county,
       road: state.road, planId: state.planId, planIdSource: state.planIdSource,
       fill: state.fill, perks: state.perks,
       // The season verdict is computed on HER clock, from the window the engine carries on /api/meta.
       meta: state.checkupMeta, now: new Date(),
     });
   }
-  return PRPassport.passportModel(data, [...state.drugs], { shareUrl });
+  return PRPassport.passportModel(data, [...state.drugs], { shareUrl, county: state.county });
 }
 
 // ---- DOM renderer: walks the shared model into the 2-page print passport (.pp-* classes) ----
@@ -1099,6 +1188,8 @@ function renderPassportDom(model) {
     }
     // The single named next step, as a callout above the detail.
     else if (it.type === 'nextstep') page.append(el('div', { className: 'pp-nextstep', textContent: it.text }));
+    // The hand-typed restore code: a monospace block, one line per row (digits easy to read aloud).
+    else if (it.type === 'codelines') { const blk = el('div', { className: 'pp-codelines' }); for (const ln of it.lines) blk.append(el('div', { className: 'pp-codeline', textContent: ln })); (page._share ? page._share.left : page).append(blk); }
     // A callee group: the "Ask your doctor/plan/SHIP" label + the sentences to say (parity order).
     else if (it.type === 'qgroup') {
       const g = el('div', { className: 'pp-qgroup pp-qgroup-' + it.callee });
@@ -1137,6 +1228,7 @@ async function renderPassportPdf(model) {
   // Serif (Times, a standard PDF font → no embedding, no size cost) for the wordmark + headings, so the
   // PDF echoes the site's Source Serif look without shipping a font. Body stays Helvetica (crisp small).
   const serif = await pdf.embedFont(StandardFonts.TimesRomanBold);
+  const mono = await pdf.embedFont(StandardFonts.Courier); // the restore code — monospace, easy to read digit-by-digit
   const W = 612, H = 792, M = 54, maxW = W - 2 * M;
   // PALETTE (DESIGN.md): warnings are amber/clay, NEVER alarm-red. `warn` is the --notcov brand-orange
   // family (#9a3b2f, 6.9:1 AA at any size) — the same token the screen uses — so needs-attention reads
@@ -1155,7 +1247,7 @@ async function renderPassportPdf(model) {
   const text = (str, o = {}) => {
     if (str == null || str === '') return;
     if (o.record !== false) drawn.push(String(str));
-    const f = o.serif ? serif : (o.bold ? bold : font), size = o.size || 10.5, x = M + (o.indent || 0), width = maxW - (o.indent || 0);
+    const f = o.mono ? mono : (o.serif ? serif : (o.bold ? bold : font)), size = o.size || 10.5, x = M + (o.indent || 0), width = maxW - (o.indent || 0);
     const lh = size * 1.32;
     for (const ln of wrap((o.prefix || '') + str, f, size, width)) { need(lh); y -= lh; page.drawText(ln, { x, y: y + lh * 0.24, size, font: f, color: o.color || c.ink }); }
     y -= (o.gap != null ? o.gap : 3);
@@ -1250,6 +1342,8 @@ async function renderPassportPdf(model) {
       text(chips, { size: 9, color: c.warmgray, record: false, gap: 4 });
     }
     else if (it.type === 'nextstep') { y -= 2; text(it.text, { bold: true, size: 11, color: c.ink }); y -= 2; }
+    // The restore code — each line in monospace so the digits line up and read aloud cleanly.
+    else if (it.type === 'codelines') { y -= 2; for (const ln of it.lines) text(ln, { mono: true, size: 11, indent: 8, gap: 2 }); y -= 2; }
     else if (it.type === 'qgroup') {
       text(it.label, { bold: true, size: 10, color: c.warmgray, gap: 1 });
       // Render each question VERBATIM (no added quotes) — the parity string is the raw sentence.

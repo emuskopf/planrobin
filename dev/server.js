@@ -49,6 +49,11 @@ async function main() {
       if (url.pathname === '/api/rxnorm/search' && req.method === 'GET') {
         return sendJson(res, await H.rxnormSearchHandler(url.searchParams.get('q'), { fetch, cache: rxCache, db }));
       }
+      if (url.pathname === '/api/rxnorm/resolve' && req.method === 'POST') {
+        let raw = ''; for await (const c of req) raw += c;
+        let body; try { body = JSON.parse(raw || '{}'); } catch { return sendJson(res, { status: 400, body: { error: 'invalid JSON' } }); }
+        return sendJson(res, await H.rxnormResolveHandler(body, { fetch, db }));
+      }
       if (url.pathname === '/api/results' && req.method === 'POST') {
         let raw = ''; for await (const c of req) raw += c;
         let body; try { body = JSON.parse(raw || '{}'); } catch { return sendJson(res, { status: 400, body: { error: 'invalid JSON' } }); }

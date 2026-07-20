@@ -16,6 +16,7 @@
 (function (global) {
   'use strict';
   const PRFormat = (typeof require !== 'undefined') ? require('./format.js') : global.PRFormat;
+  const PRRestoreCode = (typeof require !== 'undefined') ? require('./restorecode.js') : global.PRRestoreCode;
 
   // Standard PDF fonts (Helvetica) encode WinAnsi (Latin-1 + the CP1252 specials). Normalize the few
   // characters outside it — mainly "≈" — so the ONE model can't crash the PDF, and so the print DOM,
@@ -120,25 +121,36 @@
   // (DOM shows the emoji, the PDF shows a plain marker) so they're NOT part of the parity strings —
   // the sentences are what must match. `noun` only names the thing she's reopening.
   // ONE canonical reopen block, shared VERBATIM by both sheets (parity: checkup page 2 == comparison
-  // page 2). Two robust paper paths — scan the QR, or re-add on page 1 — plus, for anyone reading the
-  // PDF on a device, a short tappable link. The raw fragment URL is NEVER printed: it's ~180 characters
-  // and truncated to nonsense on paper. The QR already IS that URL; the tap-link carries it as a link
-  // annotation with a short human label, so nothing long ever prints.
-  function reopenItems(noun, shareUrl) {
-    return [
+  // page 2). The tiered paths, in order — QR (scan) / typed code / re-add — each absorbing the ones
+  // above it as the reader's tools shrink. The raw fragment URL is NEVER printed (it truncates on
+  // paper); the QR IS that URL, and the typed code is the paper-only path for someone who can't scan
+  // and won't re-type a basket. `codeLines` is the hand-typed restore code (one drug per line).
+  function reopenItems(noun, shareUrl, codeLines) {
+    const items = [
       // `reopen-h` is STRUCTURAL, not just a heading: it opens the two-column block the QR sits beside.
-      // It is deliberately NOT `h3` — a plain sub-heading (the action plan uses several) must never
-      // open a share column, or everything after it ends up nested inside one.
       { type: 'reopen-h', text: `Reopen this ${noun}` },
       { type: 'note', text: 'To see this search again — with the newest plan data — pick whichever is easiest for you:' },
       { type: 'path', icon: '📷', text: 'Use your phone’s camera. Open the camera as if you’re taking a picture, and point it at the square code below. You don’t need any special app. A link will pop up on the screen — tap it, and this exact search opens.' },
+      // Path 2 — the hand-typed restore code (blessed intro, verbatim).
+      { type: 'path', icon: '⌨️', text: 'Or type in a code. Go to planrobin.com, find “Have a code from a printout?”, and enter the lines below exactly as printed.' },
+    ];
+    if (codeLines && codeLines.length) items.push({ type: 'codelines', lines: codeLines });
+    items.push(
       { type: 'path', icon: '📝', text: 'Or simply re-add your medications from the list on page 1. The search box helps as you type — it takes about a minute.' },
-      // Digital-only fourth path: a short label carrying the URL as a link annotation. On paper it reads
-      // as a plain sentence; on a phone/computer it's tappable. The 180-char fragment never prints.
-      { type: 'path', icon: '🔗', text: 'Reading this on a phone or computer? Tap “Open this search” just below.' },
+      // The code carries her medication list in coded form — the same privacy footing as the link.
+      { type: 'note', text: 'Keep this private: this code contains your medication list in coded form — share it only with people you trust.' },
+      // The QR (its own tappable link annotation carries the URL; nothing long ever prints).
       { type: 'url', text: 'Open this search', link: shareUrl || '' },
       { type: 'qr', url: shareUrl || '' },
-    ];
+    );
+    return items;
+  }
+
+  // The hand-typed restore code for a search, as printed lines. Shared by both sheets. Empty when the
+  // codec isn't present (defensive) — the reopen block then simply omits the code lines.
+  function restoreCodeLines(county, drugs, fill) {
+    if (!PRRestoreCode) return [];
+    try { return PRRestoreCode.encode({ county: county, drugs: drugs, fill: fill }); } catch (_) { return []; }
   }
 
   const asOfOf = (meta) => meta.ingestedAt ? new Date(meta.ingestedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'unknown date';
@@ -174,7 +186,7 @@
 
     items.push({ type: 'h', text: 'Before you decide', pageBreak: true });
     for (const c of caveatTexts(top, meta, asOf)) items.push({ type: 'caveat', text: c });
-    for (const it of reopenItems('comparison', opts.shareUrl)) items.push(it);
+    for (const it of reopenItems('comparison', opts.shareUrl, restoreCodeLines(opts.county, drugs, opts.fill))) items.push(it);
 
     sanitizeItems(items); // WinAnsi-safe strings shared by the DOM + PDF (no divergence, no crash)
     return { items, filename: filenameFor('comparison'), shareUrl: opts.shareUrl || '' };
@@ -457,7 +469,7 @@
     // and never the two-roads note (nothing to confuse it with).
     items.push({ type: 'h', text: 'Before you decide', pageBreak: true });
     for (const c of caveatTexts([you], meta, asOf)) items.push({ type: 'caveat', text: c });
-    for (const it of reopenItems('checkup', opts.shareUrl)) items.push(it);
+    for (const it of reopenItems('checkup', opts.shareUrl, restoreCodeLines(opts.county, drugs, opts.fill))) items.push(it);
 
     sanitizeItems(items);
     return { items, filename: filenameFor('checkup'), shareUrl: opts.shareUrl || '' };
@@ -472,6 +484,8 @@
       if (it.type === 'path') { out.push(it.text); continue; } // the sentence (not the decorative icon)
       // A callee group: the label, then each question. Both renderers emit exactly this order.
       if (it.type === 'qgroup') { out.push(it.label); for (const q of it.questions) out.push(q); continue; }
+      // The restore code: each printed line is one parity string (both renderers emit them verbatim).
+      if (it.type === 'codelines') { for (const ln of it.lines) out.push(ln); continue; }
       if (it.type === 'plan') {
         // Order matches both renderers exactly: name, total, [premium], sub, …
         out.push(it.name, it.total);

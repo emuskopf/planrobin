@@ -69,6 +69,14 @@ async function checkupIntake(page, o) {
 STATES.push(
   // All five questions on screen at once — the whole intake before a single answer.
   { name: 'checkup-intake', async setup(page) { await page.goto('/checkup.html'); } },
+  // The restore-code entry, open with a 10-line code typed in and per-line validation showing.
+  { name: 'checkup-code-entry', async setup(page) {
+    await page.goto('/checkup.html');
+    await page.click('#code-restore > summary');
+    const lines = await page.evaluate(() => { const d = []; for (let i = 0; i < 10; i++) d.push([String(100000 + i * 811), { qty: [30, 60, 90][i % 3] }]); return PRRestoreCode.encode({ county: '26940', drugs: d, fill: { where: 'mail', days: '1' } }); });
+    await page.fill('#code-input', lines.join('\n'));
+    await page.waitForSelector('.code-line.cl-ok');
+  } },
   // Skip path: no plan ID → the picker, built from the plans we already priced.
   { name: 'checkup-picker', results: 'results-two-roads.json', async setup(page) { await checkupIntake(page, { road: 'ma' }); await page.waitForSelector('.picker'); } },
   // The full report: headline + action plan + fair-price + perks + bridge.
@@ -159,6 +167,18 @@ const SHEETS = [
     await page.click('.road-choice[data-perks="no"]');
     await page.click('#go');
     await page.waitForSelector('.action-warn');
+  } },
+  // A 10-line restore code block on the printed sheet — the reopen page's biggest realistic size.
+  // 10 drugs are injected into state before print so the code block prints 11 lines; the sheet layout
+  // (monospace block, share column) must still hold.
+  { name: 'checkup-passport-print-bigcode', results: 'results-two-roads.json', async setup(page) {
+    await page.goto('/checkup.html');
+    await H.setCounty(page);
+    await H.addDrug(page, '20 MG');
+    await page.fill('#road-plan-id', 'H2041-001');
+    await page.click('#go');
+    await page.waitForSelector('.plan-yours');
+    await page.evaluate(() => { for (let i = 0; i < 10; i++) state.drugs.set(String(200000 + i * 813), { label: 'Medication ' + i, qty: [30, 60, 90][i % 3], kind: 'generic' }); });
   } },
 ];
 

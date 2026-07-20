@@ -9,7 +9,7 @@ const H = require('./harness');
 const SEL = '.pp-brand, .pp-asof, .pp-inputs > div, .pp-meds li, .pp-coverage, .pp-h, .pp-plan-name, '
   + '.pp-plan-total, .pp-plan-premium, .pp-plan-sub, .pp-partial, .pp-savings, .pp-drugs td, '
   + '.pp-verdict, .pp-bullet, .pp-strong, .pp-script, .pp-fine, '
-  + '.pp-scorecard, .pp-nextstep, .pp-qlabel, .pp-q, '   // v2 (pp-scorestats is decorative — excluded)
+  + '.pp-scorecard, .pp-nextstep, .pp-qlabel, .pp-q, .pp-codeline, '   // v2 (pp-scorestats is decorative — excluded)
   + '.pp-caveats li, .pp-h3, .pp-note, .pp-path-text, .pp-url';
 
 test('print DOM and PDF render identical text from the shared model; PDF is text-based + small', async ({ page }) => {

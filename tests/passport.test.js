@@ -101,18 +101,24 @@ t('coinsurance cost is WinAnsi-safe (≈ → ~) so the standard-font PDF can nev
   assert.ok(!s.some((x) => /≈/.test(x)), 'no un-encodable ≈ survives into the model');
 });
 
-t('reopen section: camera / re-add / digital tap-link; the raw fragment URL never prints', () => {
-  const m = P.passportModel(data, drugs, { shareUrl: 'https://planrobin.com/#abc' });
+t('reopen tiered paths: QR / typed code / re-add + the code block + privacy; raw URL never prints', () => {
+  const m = P.passportModel(data, drugs, { shareUrl: 'https://planrobin.com/#abc', county: '26940' });
   const paths = m.items.filter((i) => i.type === 'path');
-  assert.strictEqual(paths.length, 3);
-  assert.ok(paths[0].text.startsWith('Use your phone’s camera'), paths[0].text);
-  assert.ok(/re-add your medications from the list on page 1/.test(paths[1].text), paths[1].text);
-  assert.ok(/Reading this on a phone or computer/.test(paths[2].text), paths[2].text); // digital-framed
+  assert.strictEqual(paths.length, 3, 'three tiered paths');
+  assert.ok(paths[0].text.startsWith('Use your phone’s camera'), 'path 1 = QR');
+  assert.ok(/Or type in a code\. Go to planrobin\.com, find “Have a code from a printout\?”/.test(paths[1].text), 'path 2 = typed code (blessed intro)');
+  assert.ok(/re-add your medications from the list on page 1/.test(paths[2].text), 'path 3 = re-add');
+  // the code block itself, and the privacy line, ride along
+  const code = m.items.find((i) => i.type === 'codelines');
+  assert.ok(code && code.lines.length >= 2, 'the printed code lines (county + drug lines)');
+  assert.ok(/^V2\.26940\.0-C\d$/.test(code.lines[0]), code.lines[0]);
+  assert.ok(m.items.some((i) => i.type === 'note' && /this code contains your medication list in coded form — share it only with people you trust/.test(i.text)), 'privacy line');
   const url = m.items.find((i) => i.type === 'url');
   assert.strictEqual(url.text, 'Open this search', 'the VISIBLE label is short (never the URL)');
-  assert.strictEqual(url.link, 'https://planrobin.com/#abc'); // the URL survives only as the link target
+  assert.strictEqual(url.link, 'https://planrobin.com/#abc');
   const s = P.passportStrings(m);
-  assert.ok(s.includes(paths[0].text) && s.includes('Open this search'), 'path sentences + short label in parity');
+  assert.ok(!s.some((x) => /#abc|#v1\./.test(x)), 'the raw fragment URL never appears in print');
+  assert.ok(s.includes(code.lines[0]), 'the code lines are in the parity contract');
 });
 
 t('reopen block is the SAME on both sheets (checkup page 2 == comparison page 2 structure)', () => {

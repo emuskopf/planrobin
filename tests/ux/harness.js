@@ -16,6 +16,14 @@ async function interceptApis(page, { results = 'results-complete.json', rxnorm =
   await page.route('**/api/counties', (r) => r.fulfill(json(fx('counties.json'))));
   await page.route('**/api/meta', (r) => r.fulfill(json(fx('meta.json'))));
   await page.route('**/api/rxnorm/search**', (r) => r.fulfill(json(fx(rxnorm))));
+  // rxcui -> name resolve (restore-code entry). Echo each requested rxcui with a generic name so the
+  // round-trip is deterministic and offline; a real name isn't needed to prove the code restores.
+  await page.route('**/api/rxnorm/resolve', (r) => {
+    let rxcuis = [];
+    try { rxcuis = (JSON.parse(r.request().postData() || '{}').rxcuis) || []; } catch (_) {}
+    const results = rxcuis.map((rx) => ({ rxcui: String(rx), name: 'medication ' + rx, kind: 'generic', onFormulary: true }));
+    return r.fulfill(json({ results }));
+  });
   await page.route('**/api/zip**', (r) => {
     const zip = new URL(r.request().url()).searchParams.get('zip');
     if (zip === '65041') return r.fulfill(json(fx('zip-multi.json')));

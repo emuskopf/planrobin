@@ -349,5 +349,7 @@ function renderBridge() {
 // app.js's init() has already wired the shared intake by the time this runs.
 wireCheckupQuestions();
 $('#go').addEventListener('click', runCheckup);
+// The restore-code path (app.js) runs the page's own runner after setting state.
+window.PRRunSearch = runCheckup;
 // The cap/season parameters ride on /api/meta — the same source the engine computes with.
 getJSON('/api/meta').then((m) => { state.checkupMeta = m; }).catch(() => {});
