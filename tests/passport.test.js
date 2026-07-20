@@ -36,7 +36,9 @@ t('string contract is complete: brand, county, meds, plan money, caveats, reopen
   assert.ok(s.some((x) => /\/yr|Doesn’t cover/.test(x)), 'a plan total');
   assert.ok(s.includes('Before you decide'), 'caveats heading');
   assert.ok(s.some((x) => /1-800-MEDICARE/.test(x)), 'medicare phone caveat');
-  assert.ok(s.includes('https://planrobin.com/#abc'), 'reopen url');
+  // the reopen link shows a SHORT label; the raw fragment URL is never printed (it truncates on paper)
+  assert.ok(s.includes('Open this search'), 'reopen tap-link label');
+  assert.ok(!s.some((x) => /#abc|#v1\./.test(x)), 'the raw fragment URL never appears in the printed strings');
 });
 
 t('MA-PD premium caveat renders when an MA-PD is printed, and NOT for a PDP-only list', () => {
@@ -83,7 +85,7 @@ t('numbers/strings all come from PRFormat (no bare $0.00 totals, whole-dollar ye
   const m = P.passportModel(data, drugs, { shareUrl: 'x' });
   const totals = m.items.filter((i) => i.type === 'plan').map((i) => i.total);
   assert.ok(totals.length > 0);
-  for (const tot of totals) assert.ok(/^\$[\d,]+\/yr|Doesn’t cover|^\$[\d,]+\/yr so far|for \d+ of \d+/.test(tot), `total looks right: ${tot}`);
+  for (const tot of totals) assert.ok(/^\$[\d,]+\/yr|Doesn’t cover|^\$[\d,]+\/yr so far|covers \d+ of your \d+ medications/.test(tot), `total looks right: ${tot}`);
 });
 
 t('coinsurance cost is WinAnsi-safe (≈ → ~) so the standard-font PDF can never crash on it', () => {
@@ -99,17 +101,29 @@ t('coinsurance cost is WinAnsi-safe (≈ → ~) so the standard-font PDF can nev
   assert.ok(!s.some((x) => /≈/.test(x)), 'no un-encodable ≈ survives into the model');
 });
 
-t('reopen section offers three paths (camera, re-add, tap the link) + the share URL', () => {
+t('reopen section: camera / re-add / digital tap-link; the raw fragment URL never prints', () => {
   const m = P.passportModel(data, drugs, { shareUrl: 'https://planrobin.com/#abc' });
   const paths = m.items.filter((i) => i.type === 'path');
   assert.strictEqual(paths.length, 3);
   assert.ok(paths[0].text.startsWith('Use your phone’s camera'), paths[0].text);
   assert.ok(/re-add your medications from the list on page 1/.test(paths[1].text), paths[1].text);
-  assert.ok(/tap the link/i.test(paths[2].text), paths[2].text);
+  assert.ok(/Reading this on a phone or computer/.test(paths[2].text), paths[2].text); // digital-framed
   const url = m.items.find((i) => i.type === 'url');
-  assert.strictEqual(url.link, 'https://planrobin.com/#abc'); // the clickable hyperlink target
+  assert.strictEqual(url.text, 'Open this search', 'the VISIBLE label is short (never the URL)');
+  assert.strictEqual(url.link, 'https://planrobin.com/#abc'); // the URL survives only as the link target
   const s = P.passportStrings(m);
-  assert.ok(s.includes(paths[0].text) && s.includes(url.text), 'path sentences + url are in the parity contract');
+  assert.ok(s.includes(paths[0].text) && s.includes('Open this search'), 'path sentences + short label in parity');
+});
+
+t('reopen block is the SAME on both sheets (checkup page 2 == comparison page 2 structure)', () => {
+  const tr = require('./ux/fixtures/results-two-roads.json');
+  const cmp = P.passportModel(data, drugs, { shareUrl: 'https://planrobin.com/#X' });
+  const chk = P.checkupModel(tr, drugs, { planId: 'H2041-001', planIdSource: 'typed', fill: { where: 'local', days: '1' }, perks: 'no', now: new Date('2026-07-16T12:00:00Z'), shareUrl: 'https://planrobin.com/#X' });
+  const reopenTypes = (m) => { const i = m.items.findIndex((x) => x.type === 'reopen-h'); return m.items.slice(i).map((x) => x.type); };
+  assert.deepStrictEqual(reopenTypes(chk), reopenTypes(cmp), 'identical reopen item structure on both sheets');
+  // and the noun is the only difference in the heading
+  assert.ok(chk.items.some((x) => x.type === 'reopen-h' && /Reopen this checkup/.test(x.text)));
+  assert.ok(cmp.items.some((x) => x.type === 'reopen-h' && /Reopen this comparison/.test(x.text)));
 });
 
 t('filename is planrobin-comparison-YYYY-MM-DD.pdf', () => {
@@ -170,7 +184,7 @@ t('the action plan gives its action — a recommendation without its action is i
     assert.ok(s.includes(C.doNothing), 'or the do-nothing verdict is printed as an answer');
   }
   // the baseline assumption that could make a saving too big is ALWAYS printed
-  assert.ok(s.some((x) => /^Measured against 30-day fills at a local pharmacy at a standard/.test(x)), 'baseline honesty: ' + s.join(' | '));
+  assert.ok(s.some((x) => /^Measured against 30-day fills at a standard \(non-preferred\) local pharmacy\./.test(x)), 'baseline honesty (deduped): ' + s.join(' | '));
 });
 
 t('screen and sheet cannot word it differently — both render from checkupCopy', () => {
@@ -233,6 +247,58 @@ t('v2: wouldSwitchingFix says No/Yes/Partly honestly, and never hides a gap (liv
   assert.strictEqual(C.wouldSwitchingFix({ nowhere: [], elsewhere: [] }, 'X'), null, 'no gap → nothing to say');
 });
 
+// ---- founder PDF-review rider (C/D/E/F) ----
+t('C: baseline sentence is deduped and composes cleanly for all three Q4 wheres', () => {
+  const C = P.checkupCopy;
+  const mk = (where) => C.baseline({ baseline: { where, days: '1' }, baselineAssumed: where === 'local' });
+  // local (assumed standard): the "at a local pharmacy at a standard…" duplication is gone
+  const local = mk('local');
+  assert.ok(/at a standard \(non-preferred\) local pharmacy\./.test(local), local);
+  assert.ok(!/local pharmacy at a standard/.test(local), 'no duplicated pharmacy phrase');
+  assert.ok(/you may already pay less/.test(local), 'the hedge stays on the assumed-standard case');
+  // preferred / mail: one clean phrase, no hedge
+  assert.ok(/at one of your plan’s preferred pharmacies\.$/.test(mk('preferred')), mk('preferred'));
+  assert.ok(/fills by mail\.$/.test(mk('mail')), mk('mail'));
+  assert.ok(!/you may already pay less/.test(mk('preferred')) && !/you may already pay less/.test(mk('mail')), 'no hedge when she told us');
+});
+
+t('D: no "about" on a zero figure — "$0 for the year" (existing ruling)', () => {
+  const C = P.checkupCopy;
+  assert.strictEqual(C.perYear(0), '$0 for the year');
+  assert.strictEqual(C.perYear(120), 'about $120/yr');
+  assert.ok(/\$0 for the year/.test(C.goodNewsBullet({ kind: 'best-price', label: 'X', annual: 0 })));
+  assert.ok(!/about \$0/.test(C.goodNewsBullet({ kind: 'best-price', label: 'X', annual: 0 })));
+  // a move TO $0 says "$0 for the year", not "about $0/yr"
+  assert.ok(/\$0 for the year/.test(C.moveLine({ label: 'X', current: 120, to: 0, saving: 120, days: '2' })));
+});
+
+t('E: partial anchor reads "covers N of your M medications" (matches the screen)', () => {
+  // make EVERY plan partial (drop one drug) so a partial plan appears in the printed top-N
+  const mixed = JSON.parse(JSON.stringify(data));
+  for (const p of mixed.plans) { p.drugs['596926'] = { covered: false }; p.notCovered = 1; }
+  const m = P.passportModel(mixed, drugs, { shareUrl: 'x' });
+  const partialTotal = m.items.filter((i) => i.type === 'plan').map((i) => i.total).find((t) => /covers \d/.test(t));
+  assert.ok(partialTotal, 'a partial total exists');
+  assert.ok(/· covers 1 of your 2 medications$/.test(partialTotal), partialTotal);
+  assert.ok(!/· for \d+ of \d+/.test(partialTotal), 'the old "for N of M" phrasing is gone');
+});
+
+t('F: the PA clause prints ONLY when a moved drug needs prior authorization (verified vs CMS)', () => {
+  const C = P.checkupCopy;
+  const F = require('../site/format.js');
+  const cells = { standardRetail: { kind: 'copay', dollars: 30 }, preferredMail: { kind: 'copay', dollars: 3 }, standardMail: { kind: 'copay', dollars: 3 } };
+  const mk = (pa) => ({ planId: 'H1-001', planName: 'T', planType: 'MA-PD', premium: 0, deductible: 0, notCovered: 0,
+    drugs: { d1: { covered: true, tier: 2, flags: { priorAuth: pa }, headline: { kind: 'copay', dollars: 30 }, appliedOverrides: [],
+      phases: { '1': { byDaysSupply: { '1': cells, '2': { preferredMail: { kind: 'copay', dollars: 12 }, standardMail: { kind: 'copay', dollars: 12 } } } } } } } });
+  const list = [['d1', { label: 'DrugOne' }]];
+  const withPa = F.actionPlan(mk(true), list, { where: 'local', days: '1' });
+  assert.ok(withPa.moves.length === 1 && withPa.moves[0].pa === true, 'the move carries the PA flag');
+  const noPa = F.actionPlan(mk(false), list, { where: 'local', days: '1' });
+  assert.strictEqual(noPa.moves[0].pa, false);
+  // the clause is accurate + hedged ("may")
+  assert.ok(/mail-order pharmacy handles the same approval — your doctor may get a call/.test(C.paClause), C.paClause);
+});
+
 t('v2: the preferred-pharmacy switch renders as its own action, with true dollars + how-to question', () => {
   const C = P.checkupCopy;
   const pref = require('./ux/fixtures/results-preferred-switch.json');
@@ -280,7 +346,8 @@ t('page 2 is the reopen page, and the caveats key off what is ACTUALLY printed',
   const s = P.passportStrings(ckModel());
   assert.ok(s.includes('Reopen this checkup'), 'the reopen page, named for this sheet');
   assert.ok(s.some((x) => /Use your phone’s camera/.test(x)), 'camera path');
-  assert.ok(s.includes(CK.shareUrl), 'the share URL');
+  assert.ok(s.includes('Open this search'), 'the short tap-link label (never the raw fragment URL)');
+  assert.ok(!s.some((x) => /#v1\.|#abc/.test(x)), 'the raw fragment URL is not printed');
   assert.ok(s.some((x) => /1-800-MEDICARE/.test(x)), 'confirm-it caveat');
   // ONE plan on this sheet → never the two-roads caveat (there is nothing to confuse it with)
   assert.ok(!s.some((x) => /not interchangeable/.test(x)), 'no two-roads caveat on a one-plan sheet');

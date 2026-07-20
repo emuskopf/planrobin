@@ -69,7 +69,7 @@
     const cov = PRFormat.planCoverage(p);
     const total = cov.covered === 0
       ? (cov.total === 1 ? 'Doesn’t cover your medication' : 'Doesn’t cover any of your medications')
-      : PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (cov.complete ? (p.annualComplete ? '' : ' so far') : ` · for ${cov.covered} of ${cov.total}`);
+      : PRFormat.dollars(PRFormat.planDisplayTotal(p)) + '/yr' + (cov.complete ? (p.annualComplete ? '' : ' so far') : ` · covers ${cov.covered} of your ${cov.total} medications`);
     const id = PRFormat.planDisplayId(p, ambig);
     const prem = `${PRFormat.premiumLabel(p.planType)} ${money(p.premium || 0)}/mo`;
     const item = {
@@ -119,6 +119,11 @@
   // The reopen page — identical on both sheets. Three senior-first ways back in. Icons are decorative
   // (DOM shows the emoji, the PDF shows a plain marker) so they're NOT part of the parity strings —
   // the sentences are what must match. `noun` only names the thing she's reopening.
+  // ONE canonical reopen block, shared VERBATIM by both sheets (parity: checkup page 2 == comparison
+  // page 2). Two robust paper paths — scan the QR, or re-add on page 1 — plus, for anyone reading the
+  // PDF on a device, a short tappable link. The raw fragment URL is NEVER printed: it's ~180 characters
+  // and truncated to nonsense on paper. The QR already IS that URL; the tap-link carries it as a link
+  // annotation with a short human label, so nothing long ever prints.
   function reopenItems(noun, shareUrl) {
     return [
       // `reopen-h` is STRUCTURAL, not just a heading: it opens the two-column block the QR sits beside.
@@ -128,8 +133,10 @@
       { type: 'note', text: 'To see this search again — with the newest plan data — pick whichever is easiest for you:' },
       { type: 'path', icon: '📷', text: 'Use your phone’s camera. Open the camera as if you’re taking a picture, and point it at the square code below. You don’t need any special app. A link will pop up on the screen — tap it, and this exact search opens.' },
       { type: 'path', icon: '📝', text: 'Or simply re-add your medications from the list on page 1. The search box helps as you type — it takes about a minute.' },
-      { type: 'path', icon: '🔗', text: 'Or tap the link below. If you’re reading this on a phone or computer, tap the web address and this exact search opens.' },
-      { type: 'url', text: shareUrl || '', link: shareUrl || '' },
+      // Digital-only fourth path: a short label carrying the URL as a link annotation. On paper it reads
+      // as a plain sentence; on a phone/computer it's tappable. The 180-char fragment never prints.
+      { type: 'path', icon: '🔗', text: 'Reading this on a phone or computer? Tap “Open this search” just below.' },
+      { type: 'url', text: 'Open this search', link: shareUrl || '' },
       { type: 'qr', url: shareUrl || '' },
     ];
   }
@@ -209,14 +216,14 @@
         : `Send ${n === 1 ? 'this one' : 'these ' + n} to mail order`;
       return `${verb} — saving about ${PRFormat.dollars(a.moveSaving)}/yr`;
     },
-    moveLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, about ${PRFormat.dollars(m.to)}/yr as a ${DAYS_WORD[m.days]} fill by mail. Saving about ${PRFormat.dollars(m.saving)}/yr.` + checkupCopy.runnerUpClause(m),
+    moveLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, ${checkupCopy.perYear(m.to)} as a ${DAYS_WORD[m.days]} fill by mail. Saving about ${PRFormat.dollars(m.saving)}/yr.` + checkupCopy.runnerUpClause(m),
     // Preferred-pharmacy switch — a location change, same days-supply. Named pharmacies arrive with
     // Pharmacy Network V2; until then we say "your plan's preferred pharmacies", never a specific name.
     switchHead: (a) => {
       const n = a.switches.length;
       return `Fill ${n === 1 ? 'this one' : 'these ' + n} at one of your plan’s preferred pharmacies — saving about ${PRFormat.dollars(a.switchSaving)}/yr`;
     },
-    switchLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, about ${PRFormat.dollars(m.to)}/yr at a preferred pharmacy. Saving about ${PRFormat.dollars(m.saving)}/yr.` + checkupCopy.runnerUpClause(m),
+    switchLine: (m) => `${m.label} — ${PRFormat.dollars(m.current)}/yr now, ${checkupCopy.perYear(m.to)} at a preferred pharmacy. Saving about ${PRFormat.dollars(m.saving)}/yr.` + checkupCopy.runnerUpClause(m),
     // The "how" (the exact words to say) lives in Questions to ask now (v2) — see moveQuestion/switchQuestion.
     // Small, reversible, losing nothing (CONTENT-RULES 15) — this stays with the action detail.
     reassure: 'This is a split, not a switch: you keep the same plan and the same pharmacy for anything else — your pharmacist stays yours. You can change back at any time.',
@@ -224,15 +231,21 @@
     keepBody: (a) => `${nameList(a.keep)} — already your best price on this plan.`,
     // Never modelled: say plainly what we can't compare and why (rule 6 + trade-off honesty).
     cant: (a) => `We can’t compare pharmacies for ${nameList(a.cant)} — ${a.cant.length === 1 ? 'it’s' : 'they’re'} priced as coinsurance, which depends on the drug’s price and how much you take. Your plan’s member line can quote it.`,
-    // The baseline we measured from — including the assumption that could make a saving too big.
+    // The baseline we measured from — one clean phrase per Q4 answer (no "at a local pharmacy at a
+    // standard…" duplication), plus the hedge only on the assumed-standard case.
     baseline: (a) => {
-      const w = a.baseline.where;
-      const wLabel = w === 'mail' ? 'by mail' : w === 'preferred' ? 'at one of your plan’s preferred pharmacies' : 'at a local pharmacy';
-      return `Measured against ${DAYS_WORD[a.baseline.days]} fills ${wLabel}`
-        + (a.baselineAssumed
-          ? ' at a standard (non-preferred) pharmacy. If yours is one of your plan’s preferred pharmacies you may already pay less than we’ve shown, which would make the saving smaller.'
-          : '.');
+      const days = DAYS_WORD[a.baseline.days];
+      if (a.baseline.where === 'mail') return `Measured against ${days} fills by mail.`;
+      if (a.baseline.where === 'preferred') return `Measured against ${days} fills at one of your plan’s preferred pharmacies.`;
+      // local = the assumed standard baseline: one phrase, then the "you may already pay less" hedge.
+      return `Measured against ${days} fills at a standard (non-preferred) local pharmacy. If yours is one of your plan’s preferred pharmacies you may already pay less than we’ve shown, which would make the saving smaller.`;
     },
+    // "no 'about' on zero" (existing ruling, savingsCopy): a $0 figure is exact, never "about $0".
+    perYear: (n) => (Number(n) || 0) === 0 ? '$0 for the year' : 'about ' + PRFormat.dollars(n) + '/yr',
+    // Prior authorization travels with the DRUG, not the pharmacy — the mail pharmacy runs the same
+    // approval (verified vs CMS Part D Benefit Manual Ch. 6 + medicare.gov drug-plan-rules). One clause,
+    // only when a moved drug actually needs PA; "may" because an already-approved PA usually carries over.
+    paClause: 'If a medication needs prior authorization, the mail-order pharmacy handles the same approval — your doctor may get a call.',
     fairHeading: FAIR_HEADING,
     // v2: the not-covered story is told by wouldSwitchingFix + the exception path (below); the old
     // fairNotCovered* / fairNoWhereToSwitch builders are superseded and removed.
@@ -322,7 +335,7 @@
     // ---- v2: Good news — computed-true bullets only (spec item 5) ----
     goodNewsHeading: 'Good news',
     goodNewsBullet: (b) => {
-      if (b.kind === 'best-price') return `${b.label} is already at your best price — about ${PRFormat.dollars(b.annual)}/yr on this plan.`;
+      if (b.kind === 'best-price') return `${b.label} is already at your best price — ${checkupCopy.perYear(b.annual)} on this plan.`;
       if (b.kind === 'deductible') return b.text;
       if (b.kind === 'compared') return `We compared every plan in your county and found none at least ${PRFormat.dollars(b.floor)}/yr cheaper that covers everything you take.`;
       return '';
@@ -384,6 +397,8 @@
       if (a.moves.length) {
         items.push({ type: 'h3', text: checkupCopy.moveHead(a) });
         for (const m of a.moves) items.push({ type: 'bullet', text: checkupCopy.moveLine(m) });
+        // One honest clause, only when a moved drug actually needs prior authorization.
+        if (a.moves.some((m) => m.pa)) items.push({ type: 'fine', text: checkupCopy.paClause });
         items.push({ type: 'note', text: checkupCopy.reassure });
       }
       // Preferred-pharmacy switch — its own grouped action (never mixed with the mail move).

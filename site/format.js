@@ -401,7 +401,9 @@
       const runner  = mailWins ? { opt: pref, delta: prefDelta, kind: 'switch' } : { opt: mail, delta: mailDelta, kind: 'mail' };
       if (primary.opt && primary.delta >= min) {
         const runnerUp = (runner.opt && runner.delta >= min) ? { channel: runner.kind, saving: round(runner.delta), to: runner.opt.annual } : null;
-        const item = { rxcui: rxcui, label: meta.label, current: current, to: primary.opt.annual, saving: round(primary.delta), days: primary.opt.days, channel: primary.opt.channel, runnerUp: runnerUp };
+        // Carry the prior-authorization flag so a mail move can add the one honest clause about it
+        // (the PA travels with the drug, not the pharmacy — verified vs CMS Part D Benefit Manual).
+        const item = { rxcui: rxcui, label: meta.label, current: current, to: primary.opt.annual, saving: round(primary.delta), days: primary.opt.days, channel: primary.opt.channel, runnerUp: runnerUp, pa: !!(res.flags && res.flags.priorAuth) };
         (primary.kind === 'mail' ? moves : switches).push(item);
       } else {
         keep.push({ rxcui: rxcui, label: meta.label, annual: current });

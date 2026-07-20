@@ -280,7 +280,7 @@ function renderActionPlan(plan, a) {
 
   // One grouped action: the instruction head, the drugs it covers (drug name given weight; the rest
   // is the shared sentence verbatim, so the li's text still equals the printed line).
-  const actionGroup = (head, list, lineFn, reassure) => {
+  const actionGroup = (head, list, lineFn, reassure, extraNote) => {
     const act = el('div', { className: 'action-item' });
     act.append(el('h3', { className: 'action-head', textContent: head }));
     const ul = el('ul', { className: 'action-drugs' });
@@ -291,12 +291,14 @@ function renderActionPlan(plan, a) {
       ul.append(li);
     }
     act.append(ul);
+    // Order mirrors the sheet: bullets → PA clause (if any) → reassurance.
+    if (extraNote) act.append(el('p', { className: 'fine muted', textContent: extraNote }));
     if (reassure) act.append(el('p', { className: 'action-reassure', textContent: C.reassure }));
     wrap.append(act);
   };
 
   // Grouped by ACTION — mail move and preferred-pharmacy switch each stand alone (never mixed).
-  if (a.moves.length) actionGroup(C.moveHead(a), a.moves, C.moveLine, true);
+  if (a.moves.length) actionGroup(C.moveHead(a), a.moves, C.moveLine, true, a.moves.some((m) => m.pa) ? C.paClause : null);
   if (a.switches.length) actionGroup(C.switchHead(a), a.switches, C.switchLine, false);
 
   if (a.keep.length) {
